@@ -7,5 +7,5 @@ WORKERS_DOMAIN = "hn-feed.<your-subdomain>.workers.dev"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "<your-kv-namespace-id>"
-preview_id = "<your-kv-namespace-preview-id>"
+id = "3aa1dbdb290f4be5918ab695274b28d1"
+preview_id = "36129582926848b78c3a449caf612a32"
