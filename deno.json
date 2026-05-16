@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "poller": "deno run --allow-net --allow-env poller/main.ts",
+    "processor": "deno run --allow-net --allow-env processor/main.ts",
+    "lint": "deno lint && deno fmt --check",
+    "fix": "deno fmt && deno lint --fix"
+  }
+}

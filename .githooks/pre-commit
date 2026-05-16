@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+deno check poller/main.ts processor/main.ts
+deno task lint
+
+npm --prefix worker run check
+npm --prefix worker run lint
+npm --prefix worker run fmt:check

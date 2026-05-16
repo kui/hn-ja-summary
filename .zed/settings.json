@@ -1,0 +1,12 @@
+{
+  "languages": {
+    "TypeScript": {
+      "language_servers": ["deno", "!typescript-language-server", "!vtsls"],
+      "formatter": "language_server"
+    },
+    "JavaScript": {
+      "language_servers": ["deno", "!typescript-language-server", "!vtsls"],
+      "formatter": "language_server"
+    }
+  }
+}

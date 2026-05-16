@@ -1,0 +1,11 @@
+name = "hn-feed"
+main = "src/index.ts"
+compatibility_date = "2026-04-20"
+
+[vars]
+WORKERS_DOMAIN = "hn-feed.<your-subdomain>.workers.dev"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "<your-kv-namespace-id>"
+preview_id = "<your-kv-namespace-preview-id>"
