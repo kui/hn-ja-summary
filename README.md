@@ -28,36 +28,11 @@ Cloudflare Workers: worker/
 ## ディレクトリ構成
 
 ```
-shared/          Web 標準 API のみ使用する共通モジュール
-  types.ts         型定義
-  rss.ts           RSS XML 生成
-  google-auth.ts   GCP 認証 (metadata server / サービスアカウントキー)
-
-poller/          Cloud Run Job (Deno)
-  main.ts          エントリーポイント
-  hn.ts            HN Firebase API クライアント
-  filter.ts        velocity フィルタロジック
-  firestore.ts     Firestore REST クライアント
-  tasks.ts         Cloud Tasks REST クライアント
-  Dockerfile
-
-processor/       Cloud Run Service (Deno + node:http)
-  main.ts          HTTP サーバーエントリーポイント
-  hn.ts            Algolia HN API クライアント
-  article.ts       元記事フェッチ
-  gemini.ts        Gemini 2.0 Flash 要約生成
-  cloudflare-kv.ts Cloudflare Workers KV REST クライアント
-  Dockerfile
-
-worker/          Cloudflare Workers (wrangler)
-  src/index.ts     Worker エントリーポイント
-  wrangler.toml
-
-scripts/         運用スクリプト
-  setup.sh         GCP インフラ初期構築
-  deploy-poller.sh Cloud Run Job + Cloud Scheduler デプロイ
-  deploy-processor.sh Cloud Run Service デプロイ
-  sync-github-env.sh .env を GitHub Secrets/Variables に反映
+shared/     Web 標準 API のみ使用する共通モジュール (型定義・RSS生成・GCP認証)
+poller/     Cloud Run Job (Deno) — HN取得・フィルタ・Cloud Tasks投入
+processor/  Cloud Run Service (Deno) — 要約生成・KV書き込み
+worker/     Cloudflare Workers — RSS配信・要約HTMLページ配信
+scripts/    GCPインフラ構築・デプロイ・GitHub Secrets同期スクリプト
 ```
 
 ## 環境変数
@@ -139,13 +114,13 @@ bash scripts/deploy-poller.sh
 
 ## ローカル実行
 
-`.env` を `source` してから起動する。`GOOGLE_SERVICE_ACCOUNT_KEY`
+`env` を `source` してから起動する。`GOOGLE_SERVICE_ACCOUNT_KEY`
 はローカル実行時のみ必要（GCP メタデータサーバーが使えないため）。
 
 Processor の動作確認:
 
 ```bash
-source .env
+source env
 deno task processor
 
 # 別ターミナルで動作確認
@@ -157,7 +132,7 @@ curl -X POST http://localhost:8080/process \
 Poller のローカル実行:
 
 ```bash
-source .env
+source env
 deno task poller
 ```
 
