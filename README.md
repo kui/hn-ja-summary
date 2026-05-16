@@ -61,9 +61,13 @@ scripts/    GCPインフラ構築・デプロイ・GitHub Secrets同期スクリ
 
 ## セットアップ手順
 
-`env.example` をコピーして値を埋める。
+`env.example` をコピーして値を埋める。Claude Code を使う場合は `/setup-env` コマンドで対話的に作成できる。
 
 ```bash
+# Claude Code を使う場合
+/setup-env
+
+# 手動で作成する場合
 cp env.example env
 # env を編集して各値を記入
 source env
