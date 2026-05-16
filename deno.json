@@ -1,4 +1,7 @@
 {
+  "fmt": {
+    "proseWrap": "preserve"
+  },
   "tasks": {
     "poller": "deno run --allow-net --allow-env poller/main.ts",
     "processor": "deno run --allow-net --allow-env processor/main.ts",
