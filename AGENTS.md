@@ -38,6 +38,10 @@ npm --prefix worker run fmt:check
 
 フォーマットエラーは `npm --prefix worker run fmt` で自動修正できる。
 
+## README の更新確認
+
+コードや設定に変更を加えた際は、README.md の内容も更新が必要でないか必ず確認すること。
+
 ## フック有効化
 
 リポジトリ初期化後に一度だけ実行:
