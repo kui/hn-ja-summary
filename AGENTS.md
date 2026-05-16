@@ -49,3 +49,7 @@ npm --prefix worker run fmt:check
 ```bash
 git config core.hooksPath .githooks
 ```
+
+## スキル実行後の自己改善
+
+`.claude/commands/` 配下のスキル（slash command）を実行した際は、完了時に必ずそのスキルプロンプトを振り返り、実行中に発見した問題点・不足・改善点があればプロンプトファイルを修正すること。

@@ -41,10 +41,12 @@ Browser MCP を使って各サービスの認証情報を取得し、プロジ�
 
 ### ステップ 4: Google Cloud — Workload Identity
 
-1. `https://console.cloud.google.com/iam-admin/workload-identity-pools` を開く
+1. `https://console.cloud.google.com/iam-admin/workload-identity-pools?project=<PROJECT_ID>` を開く（プロジェクトを URL に含めないとプロジェクト未選択になることがある）
 2. 既存のプールがあればそれを使用、なければ **プールを作成** → 名前 `github-actions`
 3. プロバイダーを追加（OIDC、発行元 `https://token.actions.githubusercontent.com`）
-4. プロバイダーのリソース名（`projects/<NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>` 形式）を `GCP_WORKLOAD_IDENTITY_PROVIDER` に設定
+4. 属性マッピング: `google.subject` → `assertion.sub`
+5. 属性条件（必須）: `assertion.sub != ""` を設定する。GCP はデプロイパイプライン用 OIDC プロバイダーに属性条件を要求するため、省略するとエラーになる
+6. プロバイダーのリソース名（`projects/<NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>` 形式）を `GCP_WORKLOAD_IDENTITY_PROVIDER` に設定
 
 ### ステップ 5: Gemini API Key
 
@@ -54,9 +56,9 @@ Browser MCP を使って各サービスの認証情報を取得し、プロジ�
 
 ### ステップ 6: Jina API Key
 
-1. `https://jina.ai/` を開き、ログインまたはアカウント作成
-2. API Keys ページへ移動してキーをコピー
-3. `JINA_API_KEY` に設定
+1. `https://jina.ai/` を開く（ログイ���済みであればトップページ下部に API キーが表示される）
+2. ページ内の「APIキー」テキストボックスからキーをコピー
+3. `JINA_API_KEY` に��定
 
 ---
 
@@ -88,7 +90,11 @@ MAX_COMMENTS=20
 ## 完了後
 
 ```bash
-mise run sync-github
+bash scripts/sync-github-env.sh
 ```
 
-を実行して GitHub Secrets/Variables に同期する。
+を実行して GitHub Secrets/Variables に同期する（`mise` がインストール済みなら `mise run sync-github` でも可）。
+
+## ダイジェスト出力
+
+すべての手順が完了したら、今回行った操作のダイジェストを出力する。各ステップで取得・設定した値（トークンやキーはマスクせず表示）、スキップした項目、発生したエラーと対処を簡潔にまとめること。
