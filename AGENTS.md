@@ -6,7 +6,7 @@
 経由で管理されている。コマンドを実行する際は `mise exec -- deno ...` のように
 mise 経由で実行すること（または `mise run` タスクを使う）。
 
-`mise` が PATH にない場合は `deno` を直接呼び出すこと（`command -v deno` で確認できる）。
+`mise` が PATH にない場合はインストールすること: https://mise.jdx.dev/getting-started.html
 
 ## コミット前チェック
 
