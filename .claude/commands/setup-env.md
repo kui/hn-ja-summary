@@ -36,8 +36,24 @@ Browser MCP を使って各サービスの認証情報を取得し、プロジ�
 2. ログイン済みであることを確認する
 3. プロジェクト選択ドロップダウンから対象プロジェクトを選択し、**プロジェクト ID** をコピーして `GCP_PROJECT_ID` に設定
 4. 左メニュー **IAM & 管理 → サービスアカウント** へ移動
-5. サービスアカウント `hn-processor@<PROJECT_ID>.iam.gserviceaccount.com` が存在するか確認。なければ作成（ロール: Cloud Tasks エンキューアー、Cloud Run 起動元）
+5. サービスアカウント `hn-processor@<PROJECT_ID>.iam.gserviceaccount.com` が存在するか確認。なければ作成
 6. サービスアカウントのメールアドレスを `GCP_SERVICE_ACCOUNT` に設定
+7. **IAM & 管理 → IAM** でサービスアカウントに以下の **5つのロール** を付与する:
+   - Artifact Registry 管理者
+   - Cloud Run 管理者
+   - Cloud Run 起動元
+   - クラウドタスクへのデータ追加（Cloud Tasks エンキューアー）
+   - サービス アカウント ユーザー（`iam.serviceaccounts.actAs` 権限。Cloud Run デプロイ時に必須）
+
+### ステップ 3.5: Google Cloud — Artifact Registry
+
+1. `https://console.cloud.google.com/artifacts?project=<PROJECT_ID>` を開く
+2. **リポジトリを作成** をクリック
+3. 以下の設定で作成:
+   - 名前: `gcr.io`
+   - 形式: **Docker**
+   - リージョン: **マルチリージョン → us**
+4. ⚠️ このリポジトリが存在しないと、GitHub Actions から `docker push gcr.io/<PROJECT_ID>/...` した際に `createOnPush` 権限エラーが発生する。必ずデプロイ前に作成すること
 
 ### ステップ 4: Google Cloud — Workload Identity
 
