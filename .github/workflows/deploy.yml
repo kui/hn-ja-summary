@@ -44,19 +44,14 @@ jobs:
           file: poller/Dockerfile
           push: true
           tags: gcr.io/${{ secrets.GCP_PROJECT_ID }}/hn-feed-poller:latest
-      - name: Deploy Cloud Run Job
+      - name: Deploy
         env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
-          QUEUE: ${{ vars.CLOUD_TASKS_QUEUE || 'hn-processor' }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
+          CLOUD_TASKS_QUEUE: ${{ vars.CLOUD_TASKS_QUEUE || 'hn-processor' }}
           PROCESSOR_URL: ${{ secrets.PROCESSOR_URL }}
-        run: |
-          SA_EMAIL="hn-feed-sa@${PROJECT_ID}.iam.gserviceaccount.com"
-          gcloud run jobs deploy hn-feed-poller \
-            --image="gcr.io/${PROJECT_ID}/hn-feed-poller:latest" \
-            --region="${REGION}" \
-            --set-env-vars="GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},CLOUD_TASKS_QUEUE=${QUEUE},PROCESSOR_URL=${PROCESSOR_URL},SERVICE_ACCOUNT_EMAIL=${SA_EMAIL}" \
-            --project="${PROJECT_ID}"
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: bash scripts/deploy-poller.sh
 
   deploy-processor:
     runs-on: ubuntu-latest
@@ -75,17 +70,15 @@ jobs:
           file: processor/Dockerfile
           push: true
           tags: gcr.io/${{ secrets.GCP_PROJECT_ID }}/hn-feed-processor:latest
-      - uses: google-github-actions/deploy-cloudrun@v3
-        with:
-          service: hn-feed-processor
-          image: gcr.io/${{ secrets.GCP_PROJECT_ID }}/hn-feed-processor:latest
-          region: ${{ vars.GCP_REGION || 'asia-northeast1' }}
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          env_vars: |
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-            CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-            CLOUDFLARE_KV_NAMESPACE_ID=${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
-            CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
-            WORKERS_DOMAIN=${{ vars.WORKERS_DOMAIN }}
-            GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-            MAX_COMMENTS=${{ vars.MAX_COMMENTS || '20' }}
+      - name: Deploy
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_KV_NAMESPACE_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WORKERS_DOMAIN: ${{ vars.WORKERS_DOMAIN }}
+          MAX_COMMENTS: ${{ vars.MAX_COMMENTS || '20' }}
+        run: bash scripts/deploy-processor.sh

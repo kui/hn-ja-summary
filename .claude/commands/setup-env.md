@@ -38,10 +38,11 @@ Browser MCP を使って各サービスの認証情報を取得し、プロジ�
 4. 左メニュー **IAM & 管理 → サービスアカウント** へ移動
 5. サービスアカウント `hn-processor@<PROJECT_ID>.iam.gserviceaccount.com` が存在するか確認。なければ作成
 6. サービスアカウントのメールアドレスを `GCP_SERVICE_ACCOUNT` に設定
-7. **IAM & 管理 → IAM** でサービスアカウントに以下の **5つのロール** を付与する:
+7. **IAM & 管理 → IAM** でサービスアカウントに以下の **6つのロール** を付与する:
    - Artifact Registry 管理者
    - Cloud Run 管理者
    - Cloud Run 起動元
+   - Cloud Scheduler 管理者（poller を定期実行するための Scheduler ジョブ作成に必須）
    - クラウドタスクへのデータ追加（Cloud Tasks エンキューアー）
    - サービス アカウント ユーザー（`iam.serviceaccounts.actAs` 権限。Cloud Run デプロイ時に必須）
 
