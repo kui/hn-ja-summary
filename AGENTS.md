@@ -6,23 +6,28 @@
 経由で管理されている。コマンドを実行する際は `mise exec -- deno ...` のように
 mise 経由で実行すること（または `mise run` タスクを使う）。
 
+`mise` が PATH にない場合は `deno` を直接呼び出すこと（`command -v deno` で確認できる）。
+
 ## コミット前チェック
 
-コードを変更したら、コミットする前に必ず以下をすべてパスさせること:
+コードを変更したら、コミットする前に必ず以下をすべてパスさせること。
+**フォーマット自動修正を先に実行してからチェックすること。**
 
 ### Deno (poller/, processor/, shared/)
 
 ```bash
-deno check poller/main.ts processor/main.ts
-deno task lint
+deno fmt <変更したファイル...>                  # フォーマット自動修正（必須）
+deno check poller/main.ts processor/main.ts    # 型チェック
+deno task lint                                 # lint + fmt --check
 ```
 
+- `deno fmt <ファイル>`: 変更したファイルのフォーマットを自動修正する。**チェック前に必ず実行すること。**
+  - **注意**: Windows 環境（`core.autocrlf=true`）で `deno fmt`（引数なし）を実行すると、
+    CRLF 差分が全ファイルで報告されるが、これは Windows 固有の問題で CI には影響しない。
+    必ず **変更したファイルのみ** を引数に渡すこと。
 - `deno check`: 型エラーがないこと
 - `deno lint`: lint エラーがないこと
-- `deno fmt --check`: フォーマットが揃っていること（`deno task lint`
-  に含まれる）
-
-フォーマットエラーは `deno fmt` で自動修正できる。
+- `deno fmt --check`: フォーマットが揃っていること（`deno task lint` に含まれる）
 
 ### Worker (worker/)
 
@@ -49,6 +54,11 @@ npm --prefix worker run fmt:check
 ```bash
 git config core.hooksPath .githooks
 ```
+
+## GitHub Actions ワークフローのトリガー
+
+ワークフローを動かすためだけの空コミット（`git commit --allow-empty`）は行わないこと。
+再デプロイが必要な場合は `gcloud run deploy` や `gcloud run jobs update` などの CLI コマンドで直接実行すること。
 
 ## スキル実行後の自己改善
 
