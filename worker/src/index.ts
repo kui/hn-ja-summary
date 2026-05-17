@@ -6,7 +6,7 @@ interface Env {
 }
 
 export default {
-  fetch(request: Request, env: Env): Response | Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
