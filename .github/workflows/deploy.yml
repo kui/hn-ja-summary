@@ -87,3 +87,5 @@ jobs:
             CLOUDFLARE_KV_NAMESPACE_ID=${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
             WORKERS_DOMAIN=${{ vars.WORKERS_DOMAIN }}
+            GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            MAX_COMMENTS=${{ vars.MAX_COMMENTS || '20' }}
