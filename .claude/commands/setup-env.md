@@ -56,6 +56,21 @@ Browser MCP を使って各サービスの認証情報を取得し、プロジ�
    - リージョン: **マルチリージョン → us**
 4. ⚠️ このリポジトリが存在しないと、GitHub Actions から `docker push gcr.io/<PROJECT_ID>/...` した際に `createOnPush` 権限エラーが発生する。必ずデプロイ前に作成すること
 
+### ステップ 3.6: Google Cloud — Firestore データベース
+
+1. `https://console.cloud.google.com/apis/library/firestore.googleapis.com?project=<PROJECT_ID>` を開く
+2. **Cloud Firestore API** が無効であれば「有効にする」をクリック
+3. `https://console.cloud.google.com/firestore/databases?project=<PROJECT_ID>` を開く
+4. **Firestore データベースを作成** をクリック
+5. 以下の設定で作成:
+   - データベース ID: `(default)`
+   - エディション: **Standard Edition**（`(default)` ID は Enterprise では使用不可）
+   - モード: **ネイティブ モードの Firestore**
+   - セキュリティ ルール: **限定的**
+   - ロケーション タイプ: **リージョン**
+   - リージョン: **asia-northeast1（東京）**
+6. ⚠️ このデータベースが存在しないと、poller ジョブが `Firestore batchGet failed: 403 SERVICE_DISABLED` で失敗する。必ずデプロイ前に作成すること
+
 ### ステップ 4: Google Cloud — Workload Identity
 
 1. `https://console.cloud.google.com/iam-admin/workload-identity-pools?project=<PROJECT_ID>` を開く（プロジェクトを URL に含めないとプロジェクト未選択になることがある）
