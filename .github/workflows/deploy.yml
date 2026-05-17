@@ -44,7 +44,7 @@ jobs:
           file: poller/Dockerfile
           push: true
           tags: gcr.io/${{ secrets.GCP_PROJECT_ID }}/hn-feed-poller:latest
-      - name: Update Cloud Run Job
+      - name: Deploy Cloud Run Job
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
@@ -52,7 +52,7 @@ jobs:
           PROCESSOR_URL: ${{ secrets.PROCESSOR_URL }}
         run: |
           SA_EMAIL="hn-feed-sa@${PROJECT_ID}.iam.gserviceaccount.com"
-          gcloud run jobs update hn-feed-poller \
+          gcloud run jobs deploy hn-feed-poller \
             --image="gcr.io/${PROJECT_ID}/hn-feed-poller:latest" \
             --region="${REGION}" \
             --set-env-vars="GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},CLOUD_TASKS_QUEUE=${QUEUE},PROCESSOR_URL=${PROCESSOR_URL},SERVICE_ACCOUNT_EMAIL=${SA_EMAIL}" \
