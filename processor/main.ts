@@ -16,7 +16,6 @@ const {
   CLOUDFLARE_ACCOUNT_ID,
   CLOUDFLARE_KV_NAMESPACE_ID,
   CLOUDFLARE_API_TOKEN,
-  WORKERS_DOMAIN,
   GCP_PROJECT_ID,
   MAX_COMMENTS,
 } = process.env;
@@ -33,14 +32,12 @@ if (!CLOUDFLARE_KV_NAMESPACE_ID) {
   throw new Error("CLOUDFLARE_KV_NAMESPACE_ID is required");
 }
 if (!CLOUDFLARE_API_TOKEN) throw new Error("CLOUDFLARE_API_TOKEN is required");
-if (!WORKERS_DOMAIN) throw new Error("WORKERS_DOMAIN is required");
 if (!GCP_PROJECT_ID) throw new Error("GCP_PROJECT_ID is required");
 
 const kv = new CloudflareKV(
   CLOUDFLARE_ACCOUNT_ID,
   CLOUDFLARE_KV_NAMESPACE_ID,
   CLOUDFLARE_API_TOKEN,
-  WORKERS_DOMAIN,
 );
 
 const firestore = new FirestoreClient(GCP_PROJECT_ID);
@@ -119,7 +116,7 @@ async function handleProcess(body: ProcessRequest): Promise<void> {
   };
 
   console.log("Updating Cloudflare KV...");
-  await kv.addFeedItem(feedItem);
+  await kv.putItem(feedItem);
 
   await firestore.setCompleted(itemId);
   console.log(`Done: ${itemId} — ${title}`);

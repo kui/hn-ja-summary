@@ -38,7 +38,7 @@ export interface FeedItem {
   hnUrl: string;
   summaryHtml: string;
   processedAt: string;
-  model?: string; // 既存 KV データとの後方互換のためオプショナル。全アイテムが model を持つようになったら ? を外す
+  model: string;
 }
 
 export interface ProcessRequest {

@@ -1,6 +1,10 @@
 {
   "fmt": {
-    "proseWrap": "preserve"
+    "proseWrap": "preserve",
+    "exclude": ["worker/"]
+  },
+  "lint": {
+    "exclude": ["worker/"]
   },
   "tasks": {
     "poller": "deno run --allow-net --allow-env poller/main.ts",
