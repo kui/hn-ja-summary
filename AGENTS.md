@@ -13,7 +13,7 @@ mise 経由で実行すること（または `mise run` タスクを使う）。
 コードを変更したら、コミットする前に必ず以下をすべてパスさせること。
 **フォーマット自動修正を先に実行してからチェックすること。**
 
-### Deno (poller/, processor/, shared/)
+### Deno (poller/, processor/, shared/, scripts/)
 
 ```bash
 deno fmt <変更したファイル...>                  # フォーマット自動修正（必須）
@@ -22,6 +22,7 @@ deno task lint                                 # lint + fmt --check
 ```
 
 - `deno fmt <ファイル>`: 変更したファイルのフォーマットを自動修正する。**チェック前に必ず実行すること。**
+- `.sql` ファイルを変更した場合は `deno task fmt:sql` でフォーマットすること（`deno task fmt:sql:check` は pre-commit hook に含まれる）
   - **注意**: Windows 環境（`core.autocrlf=true`）で `deno fmt`（引数なし）を実行すると、
     CRLF 差分が全ファイルで報告されるが、これは Windows 固有の問題で CI には影響しない。
     必ず **変更したファイルのみ** を引数に渡すこと。

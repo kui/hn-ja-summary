@@ -3,6 +3,7 @@ set -e
 
 deno check poller/main.ts processor/main.ts
 deno task lint
+deno task fmt:sql:check
 
 npm --prefix worker run check
 npm --prefix worker run lint
