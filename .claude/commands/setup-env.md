@@ -23,12 +23,19 @@ Browser MCP を使って各サービスの認証情報を取得し、プロジ�
 5. **Create Token** → **Edit Cloudflare Workers** テンプレートを選択（または Custom Token で Workers KV Storage: Edit 権限を付与）
 6. トークンを作成してコピーし `CLOUDFLARE_API_TOKEN` に設定
 
-### ステップ 2: Cloudflare — KV Namespace
+### ステップ 2: Cloudflare — D1 Database
 
-1. `https://dash.cloudflare.com/` を開き、左メニューから **Workers & Pages → KV** へ移動
-2. **Create a namespace** をクリックし、名前 `hn-feed` で作成
-3. 作成された Namespace の ID をコピーして `CLOUDFLARE_KV_NAMESPACE_ID` に設定
-4. また `worker/wrangler.toml` の `id` と `preview_id` にも同じ値を書き込む（preview_id はもう一つ別の namespace `hn-feed-preview` を作成して設定）
+1. ターミナルで以下を実行して D1 データベースを作成する:
+   ```bash
+   cd worker
+   npx wrangler d1 create hn-feed
+   ```
+2. 出力された `database_id` をコピーして `CLOUDFLARE_D1_DATABASE_ID` に設定
+3. `worker/wrangler.toml` の `database_id` にも同じ値を書き込む
+4. マイグレーションを適用する:
+   ```bash
+   npx wrangler d1 migrations apply hn-feed --remote
+   ```
 
 ### ステップ 3: Google Cloud — Project ID & Service Account
 
@@ -102,7 +109,7 @@ Browser MCP を使って各サービスの認証情報を取得し、プロジ�
 # --- GitHub Secrets (sensitive) ---
 CLOUDFLARE_API_TOKEN=<value>
 CLOUDFLARE_ACCOUNT_ID=<value>
-CLOUDFLARE_KV_NAMESPACE_ID=<value>
+CLOUDFLARE_D1_DATABASE_ID=<value>
 GCP_PROJECT_ID=<value>
 GCP_WORKLOAD_IDENTITY_PROVIDER=<value>
 GCP_SERVICE_ACCOUNT=<value>
@@ -113,11 +120,10 @@ JINA_API_KEY=<value>
 # --- GitHub Variables (non-sensitive config) ---
 GCP_REGION=asia-northeast1
 CLOUD_TASKS_QUEUE=hn-processor
-WORKERS_DOMAIN=
 MAX_COMMENTS=20
 ```
 
-`PROCESSOR_URL` と `WORKERS_DOMAIN` は Cloud Run / Workers のデプロイ後に設定するため空のままにする。
+`PROCESSOR_URL` は Cloud Run デプロイ後に設定するため空のままにする。
 
 ## 完了後
 

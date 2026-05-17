@@ -20,7 +20,7 @@ Cloud Tasks
         ├─ 元記事 fetch
         ├─ Algolia HN API: コメントツリー
         ├─ Gemini 2.0 Flash: 日本語要約生成
-        └─ Cloudflare Workers KV: feed + 個別ページ更新
+        └─ Cloudflare D1: アイテム保存
 
 Cloudflare Workers: worker/
   ├─ GET /feed.xml    → RSS (Inoreader で購読)
@@ -30,10 +30,10 @@ Cloudflare Workers: worker/
 ## ディレクトリ構成
 
 ```
-shared/     Web 標準 API のみ使用する共通モジュール (型定義・RSS生成・GCP認証)
+shared/     Web 標準 API のみ使用する共通モジュール (型定義・GCP認証)
 poller/     Cloud Run Job (Deno) — HN取得・フィルタ・Cloud Tasks投入
-processor/  Cloud Run Service (Deno) — 要約生成・KV書き込み
-worker/     Cloudflare Workers — RSS配信・要約HTMLページ配信
+processor/  Cloud Run Service (Deno) — 要約生成・D1書き込み
+worker/     Cloudflare Workers — RSS配信・要約HTMLページ配信（D1から取得しレンダリング）
 scripts/    GCPインフラ構築・デプロイ・GitHub Secrets同期スクリプト
 ```
 
@@ -52,15 +52,14 @@ scripts/    GCPインフラ構築・デプロイ・GitHub Secrets同期スクリ
 
 ### processor (Cloud Run Service)
 
-| 変数                         | 説明                                          |
-| ---------------------------- | --------------------------------------------- |
-| `GEMINI_API_KEY`             | Gemini API キー                               |
-| `CLOUDFLARE_ACCOUNT_ID`      | Cloudflare アカウント ID                      |
-| `CLOUDFLARE_KV_NAMESPACE_ID` | KV ネームスペース ID                          |
-| `CLOUDFLARE_API_TOKEN`       | Cloudflare API トークン (KV 書き込み権限)     |
-| `WORKERS_DOMAIN`             | Worker のドメイン (`hn-feed.xxx.workers.dev`) |
-| `MAX_COMMENTS`               | 要約に使う抽出コメント最大数                  |
-| `PORT`                       | HTTP ポート (default: `8080`)                 |
+| 変数                        | 説明                                      |
+| --------------------------- | ----------------------------------------- |
+| `GEMINI_API_KEY`            | Gemini API キー                           |
+| `CLOUDFLARE_ACCOUNT_ID`     | Cloudflare アカウント ID                  |
+| `CLOUDFLARE_D1_DATABASE_ID` | D1 データベース ID                        |
+| `CLOUDFLARE_API_TOKEN`      | Cloudflare API トークン (D1 書き込み権限) |
+| `MAX_COMMENTS`              | 要約に使う抽出コメント最大数              |
+| `PORT`                      | HTTP ポート (default: `8080`)             |
 
 ## セットアップ手順
 
@@ -85,16 +84,19 @@ GitHub Secrets/Variables への反映は `mise run sync-github` で行う（`gh`
 bash scripts/setup.sh
 ```
 
-### 2. Cloudflare KV ネームスペース作成
+### 2. Cloudflare D1 データベース作成
 
 ```bash
 cd worker
 npm install
-npx wrangler kv namespace create "KV"
-npx wrangler kv namespace create "KV" --preview
+npx wrangler d1 create hn-feed
 ```
 
-出力された ID を `wrangler.toml` に記入し、`WORKERS_DOMAIN` も設定する。
+出力された `database_id` を `wrangler.toml` に記入し、`CLOUDFLARE_D1_DATABASE_ID` を env に設定する。
+
+```bash
+npx wrangler d1 migrations apply hn-feed --remote
+```
 
 ### 3. Processor デプロイ
 

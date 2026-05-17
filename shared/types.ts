@@ -37,7 +37,7 @@ export interface FeedItem {
   articleUrl: string;
   hnUrl: string;
   summaryHtml: string;
-  processedAt: string;
+  processedAt: number; // Unix timestamp (ms)
   model: string;
 }
 

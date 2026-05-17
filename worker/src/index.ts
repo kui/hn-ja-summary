@@ -1,10 +1,7 @@
-import type {
-  KVNamespace,
-  KVNamespaceListKey,
-} from "@cloudflare/workers-types";
+import type { D1Database } from "@cloudflare/workers-types";
 
 interface Env {
-  KV: KVNamespace;
+  DB: D1Database;
   WORKERS_DOMAIN: string;
 }
 
@@ -14,11 +11,34 @@ interface FeedItem {
   articleUrl: string;
   hnUrl: string;
   summaryHtml: string;
-  processedAt: string;
+  processedAt: number; // Unix timestamp (ms)
   model: string;
 }
 
 const MAX_FEED_ITEMS = 20;
+
+const FEED_SQL = `
+SELECT id, title,
+  article_url  AS articleUrl,
+  hn_url       AS hnUrl,
+  summary_html AS summaryHtml,
+  processed_at_ms AS processedAt,
+  model
+FROM feed_items
+ORDER BY processed_at_ms DESC
+LIMIT ?
+`;
+
+const ITEM_SQL = `
+SELECT id, title,
+  article_url  AS articleUrl,
+  hn_url       AS hnUrl,
+  summary_html AS summaryHtml,
+  processed_at_ms AS processedAt,
+  model
+FROM feed_items
+WHERE id = ?
+`;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -35,25 +55,12 @@ export default {
 };
 
 async function handleFeed(env: Env): Promise<Response> {
-  const keys = await listAllItemKeys(env);
-  const topKeys = keys
-    .filter((k) => k.metadata?.processedAt)
-    .sort((a, b) =>
-      b.metadata!.processedAt > a.metadata!.processedAt ? 1 : -1,
-    )
-    .slice(0, MAX_FEED_ITEMS);
-
-  const items = (
-    await Promise.all(
-      topKeys.map(async (k) => {
-        const val = await env.KV.get(k.name);
-        return val ? (JSON.parse(val) as FeedItem) : null;
-      }),
-    )
-  ).filter((i): i is FeedItem => i !== null);
+  const { results } = await env.DB.prepare(FEED_SQL)
+    .bind(MAX_FEED_ITEMS)
+    .all<FeedItem>();
 
   const feedUrl = `https://${env.WORKERS_DOMAIN}/feed.xml`;
-  return new Response(generateRSS(items, feedUrl, env.WORKERS_DOMAIN), {
+  return new Response(generateRSS(results, feedUrl, env.WORKERS_DOMAIN), {
     headers: {
       "Content-Type": "application/rss+xml; charset=utf-8",
       "Cache-Control": "public, max-age=300",
@@ -62,34 +69,17 @@ async function handleFeed(env: Env): Promise<Response> {
 }
 
 async function handleItem(env: Env, id: string): Promise<Response> {
-  const val = await env.KV.get(`item:${id}`);
-  if (!val) return new Response("Item not found", { status: 404 });
-  const item = JSON.parse(val) as FeedItem;
+  const item = await env.DB.prepare(ITEM_SQL)
+    .bind(parseInt(id, 10))
+    .first<FeedItem>();
+
+  if (!item) return new Response("Item not found", { status: 404 });
   return new Response(renderItemPage(item), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "public, max-age=3600",
     },
   });
-}
-
-async function listAllItemKeys(
-  env: Env,
-): Promise<Array<KVNamespaceListKey<{ processedAt: string }>>> {
-  const keys: Array<KVNamespaceListKey<{ processedAt: string }>> = [];
-  let cursor: string | undefined;
-
-  do {
-    const result = await env.KV.list<{ processedAt: string }>({
-      prefix: "item:",
-      limit: 1000,
-      ...(cursor ? { cursor } : {}),
-    });
-    keys.push(...result.keys);
-    cursor = result.list_complete ? undefined : result.cursor;
-  } while (cursor);
-
-  return keys;
 }
 
 function generateRSS(

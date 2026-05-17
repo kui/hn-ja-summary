@@ -6,7 +6,7 @@ import { fetchHNItemWithComments, flattenTopComments } from "./hn.ts";
 import type { ArticleResult } from "./article.ts";
 import { fetchArticleContent } from "./article.ts";
 import { GeminiQuotaError, generateSummary, MODEL } from "./gemini.ts";
-import { CloudflareKV } from "./cloudflare-kv.ts";
+import { CloudflareD1 } from "./cloudflare-d1.ts";
 import { FirestoreClient } from "../shared/firestore.ts";
 import type { FeedItem, ProcessRequest } from "../shared/types.ts";
 
@@ -14,7 +14,7 @@ const {
   GEMINI_API_KEY,
   JINA_API_KEY,
   CLOUDFLARE_ACCOUNT_ID,
-  CLOUDFLARE_KV_NAMESPACE_ID,
+  CLOUDFLARE_D1_DATABASE_ID,
   CLOUDFLARE_API_TOKEN,
   GCP_PROJECT_ID,
   MAX_COMMENTS,
@@ -28,15 +28,15 @@ if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is required");
 if (!CLOUDFLARE_ACCOUNT_ID) {
   throw new Error("CLOUDFLARE_ACCOUNT_ID is required");
 }
-if (!CLOUDFLARE_KV_NAMESPACE_ID) {
-  throw new Error("CLOUDFLARE_KV_NAMESPACE_ID is required");
+if (!CLOUDFLARE_D1_DATABASE_ID) {
+  throw new Error("CLOUDFLARE_D1_DATABASE_ID is required");
 }
 if (!CLOUDFLARE_API_TOKEN) throw new Error("CLOUDFLARE_API_TOKEN is required");
 if (!GCP_PROJECT_ID) throw new Error("GCP_PROJECT_ID is required");
 
-const kv = new CloudflareKV(
+const d1 = new CloudflareD1(
   CLOUDFLARE_ACCOUNT_ID,
-  CLOUDFLARE_KV_NAMESPACE_ID,
+  CLOUDFLARE_D1_DATABASE_ID,
   CLOUDFLARE_API_TOKEN,
 );
 
@@ -111,12 +111,12 @@ async function handleProcess(body: ProcessRequest): Promise<void> {
     articleUrl,
     hnUrl,
     summaryHtml,
-    processedAt: new Date().toISOString(),
+    processedAt: Date.now(),
     model: MODEL,
   };
 
-  console.log("Updating Cloudflare KV...");
-  await kv.putItem(feedItem);
+  console.log("Updating Cloudflare D1...");
+  await d1.putItem(feedItem);
 
   await firestore.setCompleted(itemId);
   console.log(`Done: ${itemId} — ${title}`);
