@@ -18,7 +18,7 @@ interface FeedItem {
   model: string;
 }
 
-const MAX_FEED_ITEMS = 50;
+const MAX_FEED_ITEMS = 20;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
