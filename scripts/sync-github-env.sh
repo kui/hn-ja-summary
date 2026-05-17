@@ -21,7 +21,7 @@ VAR_KEYS=(
   WORKERS_DOMAIN
 )
 
-ENV_FILE="${1:-env}"
+ENV_FILE="${1:-./env}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Error: $ENV_FILE not found" >&2
