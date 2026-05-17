@@ -96,7 +96,9 @@ ${commentsText}
   if (!resp.ok) {
     const body = await resp.text();
     if (resp.status === 429) {
-      throw new GeminiQuotaError(`Gemini quota exceeded: ${resp.status} ${body}`);
+      throw new GeminiQuotaError(
+        `Gemini quota exceeded: ${resp.status} ${body}`,
+      );
     }
     throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }

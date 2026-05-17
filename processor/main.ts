@@ -5,7 +5,7 @@ import process from "node:process";
 import { fetchHNItemWithComments, flattenTopComments } from "./hn.ts";
 import type { ArticleResult } from "./article.ts";
 import { fetchArticleContent } from "./article.ts";
-import { generateSummary, GeminiQuotaError } from "./gemini.ts";
+import { GeminiQuotaError, generateSummary } from "./gemini.ts";
 import { CloudflareKV } from "./cloudflare-kv.ts";
 import { FirestoreClient } from "../shared/firestore.ts";
 import type { FeedItem, ProcessRequest } from "../shared/types.ts";
@@ -147,7 +147,10 @@ async function handler(
       if (err instanceof GeminiQuotaError) {
         // Gemini の無料枠クォータ超過 → 429 を返して Cloud Tasks に適切なバックオフでリトライさせる
         // Firestore にエラー状態は記録しない（アイテム自体の問題ではないため）
-        console.warn("Gemini quota exceeded, returning 429 to Cloud Tasks:", String(err));
+        console.warn(
+          "Gemini quota exceeded, returning 429 to Cloud Tasks:",
+          String(err),
+        );
         res.writeHead(429, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: String(err), retryable: true }));
         return;
