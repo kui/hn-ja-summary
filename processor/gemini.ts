@@ -3,6 +3,13 @@ import type { ArticleResult } from "./article.ts";
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
 const MODEL = "gemini-2.0-flash";
 
+export class GeminiQuotaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GeminiQuotaError";
+  }
+}
+
 interface GeminiResponse {
   candidates: Array<{
     content: { parts: Array<{ text: string }> };
@@ -87,7 +94,11 @@ ${commentsText}
   );
 
   if (!resp.ok) {
-    throw new Error(`Gemini API error: ${resp.status} ${await resp.text()}`);
+    const body = await resp.text();
+    if (resp.status === 429) {
+      throw new GeminiQuotaError(`Gemini quota exceeded: ${resp.status} ${body}`);
+    }
+    throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }
 
   const data = await resp.json() as GeminiResponse;
