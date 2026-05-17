@@ -143,11 +143,6 @@ source env
 deno task poller
 ```
 
-## フィルタ条件
+## 掲載条件
 
-```
-velocity = score / age_hours  >= 30 pt/h
-AND (age >= 1h OR score >= 100 OR comments >= 50)
-```
-
-閾値は `poller/filter.ts` の定数で調整。
+Hacker News トップページから `poller/filter.ts` で実装された条件で抽出。
