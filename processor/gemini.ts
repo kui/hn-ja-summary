@@ -1,7 +1,7 @@
 import type { ArticleResult } from "./article.ts";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
-const MODEL = "gemini-3.1-flash-lite";
+export const MODEL = "gemini-3.1-flash-lite";
 
 export class GeminiQuotaError extends Error {
   constructor(message: string) {

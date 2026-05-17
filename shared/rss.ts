@@ -12,13 +12,16 @@ export function generateRSS(
     .map((item) => {
       const itemPageUrl = `https://${workersDomain}/items/${item.id}`;
       const pubDate = new Date(item.processedAt).toUTCString();
+      const modelNote = item.model
+        ? `<p style="color:#888;font-size:.85em">要約モデル: ${item.model}</p>`
+        : "";
       return `
   <item>
     <title><![CDATA[${item.title}]]></title>
     <link>${itemPageUrl}</link>
     <guid isPermaLink="true">${itemPageUrl}</guid>
     <pubDate>${pubDate}</pubDate>
-    <description><![CDATA[${item.summaryHtml}]]></description>
+    <description><![CDATA[${item.summaryHtml}${modelNote}]]></description>
   </item>`;
     })
     .join("\n");

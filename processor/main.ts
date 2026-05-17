@@ -5,7 +5,7 @@ import process from "node:process";
 import { fetchHNItemWithComments, flattenTopComments } from "./hn.ts";
 import type { ArticleResult } from "./article.ts";
 import { fetchArticleContent } from "./article.ts";
-import { GeminiQuotaError, generateSummary } from "./gemini.ts";
+import { GeminiQuotaError, generateSummary, MODEL } from "./gemini.ts";
 import { CloudflareKV } from "./cloudflare-kv.ts";
 import { FirestoreClient } from "../shared/firestore.ts";
 import type { FeedItem, ProcessRequest } from "../shared/types.ts";
@@ -113,6 +113,7 @@ async function handleProcess(body: ProcessRequest): Promise<void> {
     hnUrl,
     summaryHtml,
     processedAt: new Date().toISOString(),
+    model: MODEL,
   };
 
   console.log("Updating Cloudflare KV...");

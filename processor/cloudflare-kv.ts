@@ -98,7 +98,7 @@ function renderItemPage(item: FeedItem): string {
     new Date(item.processedAt).toLocaleString("ja-JP", {
       timeZone: "Asia/Tokyo",
     })
-  }
+  }${item.model ? ` ｜ モデル: ${esc(item.model)}` : ""}
   </div>
   ${item.summaryHtml}
 </body>
