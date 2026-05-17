@@ -57,6 +57,7 @@ scripts/    GCPインフラ構築・デプロイ・GitHub Secrets同期スクリ
 | `CLOUDFLARE_KV_NAMESPACE_ID` | KV ネームスペース ID                          |
 | `CLOUDFLARE_API_TOKEN`       | Cloudflare API トークン (KV 書き込み権限)     |
 | `WORKERS_DOMAIN`             | Worker のドメイン (`hn-feed.xxx.workers.dev`) |
+| `MAX_COMMENTS`               | 要約に使う抽出コメント最大数                  |
 | `PORT`                       | HTTP ポート (default: `8080`)                 |
 
 ## セットアップ手順

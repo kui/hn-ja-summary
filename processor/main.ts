@@ -21,7 +21,9 @@ const {
   MAX_COMMENTS,
 } = process.env;
 
-const maxComments = parseInt(MAX_COMMENTS ?? "20", 10);
+if (!MAX_COMMENTS) throw new Error("MAX_COMMENTS is required");
+const maxComments = parseInt(MAX_COMMENTS, 10);
+if (isNaN(maxComments)) throw new Error("MAX_COMMENTS must be a number");
 
 if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is required");
 if (!CLOUDFLARE_ACCOUNT_ID) {
