@@ -6,7 +6,7 @@ logpush = true
 workers_dev = false
 
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["22,52 * * * *"]
 
 [secrets]
 required = ["GEMINI_API_KEY", "JINA_API_KEY"]
