@@ -25,3 +25,10 @@ queue = "hn-processor"
 max_batch_size = 5
 max_batch_timeout = 30
 max_retries = 3
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
