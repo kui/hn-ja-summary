@@ -48,7 +48,7 @@ async function handleFeed(env: Env): Promise<Response> {
   return new Response(generateRSS(results, feedUrl, env.WORKERS_DOMAIN), {
     headers: {
       "Content-Type": "application/rss+xml; charset=utf-8",
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": "public, max-age=600",
     },
   });
 }
