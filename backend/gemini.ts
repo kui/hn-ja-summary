@@ -57,11 +57,12 @@ ${commentsText}
 以下のHTML形式のみで出力する。マークダウンのコードブロック不要。{{}}でくくくったところは命令でありプレースホルダ。
 
 <h2>{{記事タイトル（日本語）}}</h2>
+<ul><li><strong>元記事URL</strong>: <a href="${articleUrl}">${articleUrl}</a></li></ul>
 <p>{{記事の内容・背景・意義を3〜5文で簡潔に説明。必要に応じてtable要素やol,ul要素など構造化などを用いる。}}</p>
 
 <h2>HNコミュニティの反応</h2>
-
-<p>{{コメントの総括}}</p>
+<ul><li><strong>HN URL</strong>: <a href="${hnUrl}">${hnUrl}</a></li></ul>
+<p>{{HNコメントの総括}}</p>
 
 <h3>{{主要な観点・議論の軸1}}</h3>
 <ul>
@@ -80,8 +81,7 @@ ${commentsText}
 </ul>
 
 {{「主要な観点・議論の軸」も必要に応じて繰り返す}}
-
-<p><a href="${articleUrl}">元記事を読む</a> ｜ <a href="${hnUrl}">HNコメントを読む</a></p>`;
+`;
 
   const resp = await fetch(
     `${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`,
