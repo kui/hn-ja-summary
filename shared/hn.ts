@@ -1,5 +1,6 @@
-import { MIN_COMMENTS } from "./filter";
+import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter";
 
+//
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
 
 export interface HNItem {
@@ -67,10 +68,17 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 }
 
 export async function fetchCandidateStories(): Promise<HNItem[]> {
-  const since = Math.floor(Date.now() / 1000) - SEARCH_WINDOW_SECONDS;
+  const now = Math.floor(Date.now() / 1000);
+  const since = now - SEARCH_WINDOW_SECONDS;
+  const until = now - MIN_AGE_HOURS;
 
   const numericFilters = encodeURIComponent(
-    `created_at_i>=${since},num_comments>=${MIN_COMMENTS}`,
+    [
+      `created_at_i>=${since}`,
+      `created_at_i<=${until}`,
+      `num_comments>=${MIN_COMMENTS}`,
+      `points>=${VELOCITY_THRESHOLD}`,
+    ].join(","),
   );
   const responses = await Promise.all(
     CANDIDATE_PAGES.map((page) =>

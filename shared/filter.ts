@@ -1,6 +1,6 @@
 import type { HNItem } from "./hn";
 
-export const VELOCITY_THRESHOLD = 30; // points per hour
+export const VELOCITY_THRESHOLD = 50; // points per hour
 export const MIN_AGE_HOURS = 1.0;
 export const MIN_COMMENTS = 10;
 

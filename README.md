@@ -125,7 +125,4 @@ npm -w backend run dev:scheduled
 
 ## 掲載条件
 
-`shared/filter.ts` で実装された以下の条件をすべて満たす記事を掲載。
-
-- velocity（スコア ÷ 経過時間）が 30 points/hour 以上
-- 投稿から 1 時間以上経過、またはコメント 10 件以上
+[`shared/filter.ts`](shared/filter.ts)
