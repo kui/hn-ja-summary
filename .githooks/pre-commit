@@ -1,5 +1,32 @@
 #!/bin/sh
 set -e
+
 npm run fmt:check
-npm run ts:check
+
+STAGED=$(git diff --cached --name-only)
+
+FEED=false
+BACKEND=false
+SCRIPTS=false
+
+for f in $STAGED; do
+  case "$f" in
+    feed/*) FEED=true ;;
+    backend/*) BACKEND=true ;;
+    scripts/*) SCRIPTS=true ;;
+    shared/*) FEED=true; BACKEND=true ;;
+    tsconfig*.json|package.json|eslint.config.*) FEED=true; BACKEND=true; SCRIPTS=true ;;
+  esac
+done
+
+if [ "$FEED" = true ]; then
+  npx tsc -p feed/tsconfig.json --noEmit
+fi
+if [ "$BACKEND" = true ]; then
+  npx tsc -p backend/tsconfig.json --noEmit
+fi
+if [ "$SCRIPTS" = true ]; then
+  npx tsc -p scripts/tsconfig.json --noEmit
+fi
+
 npm run lint:check
