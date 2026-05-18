@@ -1,5 +1,6 @@
 import type { AlgoliaComment, AlgoliaItem } from "../shared/types.ts";
 
+// Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
 
 export async function fetchHNItemWithComments(
