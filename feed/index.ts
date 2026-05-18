@@ -1,6 +1,7 @@
 import type { FeedItem } from "@hn-feed/shared/feed";
 
 const MAX_FEED_ITEMS = 20;
+const GITHUB_REPO = "https://github.com/kui/hn-ja-summary";
 
 const FEED_SQL = `
 SELECT id, title,
@@ -25,11 +26,29 @@ FROM feed_items
 WHERE id = ?
 `;
 
+const PAGE_STYLE = `
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  max-width:800px;
+  margin:2rem auto;
+  padding:0 1rem;
+  line-height:1.6;
+  color:#333
+}
+h1{font-size:1.4rem;margin-bottom:.5rem}
+.meta{color:#666;font-size:.9rem;margin-bottom:1.5rem}
+.meta a{color:#ff6600}
+h2{font-size:1.1rem;margin-top:1.5rem;color:#555}
+ul{padding-left:1.5rem}
+li{margin-bottom:.5rem}
+`;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (path === "/" || path === "") return await handleRoot(env);
     if (path === "/feed.xml") return await handleFeed(env);
 
     const m = path.match(/^\/items\/(\d+)$/);
@@ -38,6 +57,19 @@ export default {
     return new Response("Not found", { status: 404 });
   },
 };
+
+async function handleRoot(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(FEED_SQL)
+    .bind(MAX_FEED_ITEMS)
+    .all<FeedItem>();
+
+  return new Response(renderIndexPage(results), {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=600",
+    },
+  });
+}
 
 async function handleFeed(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(FEED_SQL)
@@ -104,6 +136,66 @@ ${itemsXml}
 </rss>`;
 }
 
+function extractFirstH2(html: string): string {
+  const m = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+  return m ? m[1].replace(/<[^>]+>/g, "").trim() : "";
+}
+
+function extractFirstP(html: string): string {
+  const m = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+  return m ? m[1].trim() : "";
+}
+
+function renderIndexPage(items: FeedItem[]): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const itemsHtml = items
+    .map((item) => {
+      const jaTitle = esc(extractFirstH2(item.summaryHtml) || item.title);
+      const firstP = extractFirstP(item.summaryHtml);
+      const date = new Date(item.createdAt).toLocaleString("ja-JP", {
+        timeZone: "Asia/Tokyo",
+      });
+      return `
+  <article>
+    <div class="meta">${date}</div>
+    <h2><a href="/items/${item.id}">${jaTitle}</a></h2>
+    ${firstP ? `<p>${firstP}</p>` : ""}
+  </article>`;
+    })
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HN Summary Feed</title>
+  <link rel="alternate" type="application/rss+xml" title="HN Summary Feed" href="/feed.xml">
+  <style>
+    ${PAGE_STYLE}
+    article{border-bottom:1px solid #eee;padding-bottom:1.5rem;margin-bottom:1.5rem}
+    article h2{margin-top:.25rem}
+    article h2 a{color:#333;text-decoration:none}
+    article h2 a:hover{color:#ff6600;text-decoration:underline}
+    article p{margin:.5rem 0 0;color:#444;font-size:.95rem}
+    .site-desc{color:#555;font-size:.95rem;margin-bottom:2rem}
+    .site-desc a{color:#ff6600}
+  </style>
+</head>
+<body>
+  <h1>HN Summary Feed</h1>
+  <div class="site-desc">
+    Hacker News のトレンド記事を日本語で要約するサービスです。
+    <a href="/feed.xml">RSS</a> ｜
+    <a href="${GITHUB_REPO}" target="_blank" rel="noopener">GitHub</a>
+  </div>
+${itemsHtml}
+</body>
+</html>`;
+}
+
 function renderItemPage(item: FeedItem): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -115,16 +207,11 @@ function renderItemPage(item: FeedItem): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${esc(item.title)}</title>
   <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;line-height:1.6;color:#333}
-    h1{font-size:1.4rem;margin-bottom:.5rem}
-    .meta{color:#666;font-size:.9rem;margin-bottom:1.5rem}
-    .meta a{color:#ff6600}
-    h2{font-size:1.1rem;margin-top:1.5rem;color:#555}
-    ul{padding-left:1.5rem}
-    li{margin-bottom:.5rem}
+    ${PAGE_STYLE}
   </style>
 </head>
 <body>
+  <p class="meta"><a href="/">← 一覧へ</a></p>
   <h1>${esc(item.title)}</h1>
   <div class="meta">
     <a href="${item.articleUrl}" target="_blank" rel="noopener">元記事</a>
