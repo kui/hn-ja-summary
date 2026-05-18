@@ -1,0 +1,31 @@
+{
+  "name": "hn-ja-summary",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "feed",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "fmt": "npm run fmt:prettier && npm run fmt:sql",
+    "fmt:check": "npm run fmt:prettier:check && npm run fmt:sql:check",
+    "fmt:prettier": "prettier --write .",
+    "fmt:prettier:check": "prettier --check .",
+    "fmt:sql": "node scripts/fmt-sql.ts migrations/*.sql",
+    "fmt:sql:check": "node scripts/fmt-sql.ts --check migrations/*.sql",
+    "ts:check": "tsc -p feed/tsconfig.json --noEmit && tsc -p backend/tsconfig.json --noEmit && tsc -p scripts/tsconfig.json --noEmit",
+    "lint": "eslint --fix",
+    "lint:check": "eslint"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260518.1",
+    "@types/node": "^25.8.0",
+    "eslint": "^10.4.0",
+    "prettier": "^3.8.3",
+    "sql-formatter": "^15.8.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.3",
+    "wrangler": "^4.92.0"
+  }
+}

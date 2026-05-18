@@ -1,9 +1,8 @@
-import type { HNItem } from "../shared/types.ts";
+import type { HNItem } from "./hn";
 
-const VELOCITY_THRESHOLD = 30; // points per hour
-const MIN_AGE_HOURS = 1.0;
-const MIN_SCORE = 100;
-const MIN_COMMENTS = 50;
+export const VELOCITY_THRESHOLD = 30; // points per hour
+export const MIN_AGE_HOURS = 1.0;
+export const MIN_COMMENTS = 10;
 
 export function shouldProcess(item: HNItem): boolean {
   const now = Date.now() / 1000;
@@ -13,8 +12,7 @@ export function shouldProcess(item: HNItem): boolean {
   if (velocity < VELOCITY_THRESHOLD) return false;
 
   const ageOk = ageHours >= MIN_AGE_HOURS;
-  const scoreOk = (item.score ?? 0) >= MIN_SCORE;
   const commentsOk = (item.descendants ?? 0) >= MIN_COMMENTS;
 
-  return ageOk || scoreOk || commentsOk;
+  return ageOk || commentsOk;
 }

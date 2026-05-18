@@ -8,21 +8,21 @@ HN トレンド記事を自動検出し、元記事とコメントを Gemini で
 ## アーキテクチャ
 
 ```
-Cloud Scheduler (15分ごと)
-  └─→ Cloud Run Job: poller/
-        ├─ HN Firebase API: top 500件取得
+Cron Trigger (15分ごと)
+  └─→ backend-worker (scheduled)
+        ├─ Algolia HN API: 直近24時間・コメント10件以上のストーリーを取得
         ├─ velocity フィルタ
-        ├─ Firestore: 処理済みチェック
-        └─ Cloud Tasks: 未処理を投入
+        ├─ D1: processed_items で重複チェック
+        └─ CF Queue: 未処理を投入
 
-Cloud Tasks
-  └─→ Cloud Run Service: processor/
-        ├─ 元記事 fetch
-        ├─ Algolia HN API: コメントツリー
-        ├─ Gemini 2.0 Flash: 日本語要約生成
-        └─ Cloudflare D1: アイテム保存
+CF Queues (hn-processor)
+  └─→ backend-worker (queue)
+        ├─ Algolia HN API: コメントツリー取得
+        ├─ Jina + raw fetch: 元記事取得
+        ├─ Gemini: 日本語要約生成
+        └─ D1: feed_items / processed_items 更新
 
-Cloudflare Workers: worker/
+feed-worker (fetch handler)
   ├─ GET /feed.xml    → RSS (Inoreader で購読)
   └─ GET /items/{id} → 要約 HTML ページ
 ```
@@ -30,121 +30,104 @@ Cloudflare Workers: worker/
 ## ディレクトリ構成
 
 ```
-shared/     Web 標準 API のみ使用する共通モジュール (型定義・GCP認証)
-poller/     Cloud Run Job (Deno) — HN取得・フィルタ・Cloud Tasks投入
-processor/  Cloud Run Service (Deno) — 要約生成・D1書き込み
-worker/     Cloudflare Workers — RSS配信・要約HTMLページ配信（D1から取得しレンダリング）
-scripts/    GCPインフラ構築・デプロイ・GitHub Secrets同期スクリプト
+shared/      共通型定義・HN API クライアント・フィルタ
+backend/     scheduled (poller) + queue (processor) を担う Worker
+feed/        RSS 配信・要約 HTML ページ配信 Worker
+migrations/  D1 共通マイグレーション
+scripts/     GitHub Secrets 同期スクリプト
 ```
 
 ## 環境変数
 
-### poller (Cloud Run Job)
+### feed-worker
 
-| 変数                         | 説明                                    |
-| ---------------------------- | --------------------------------------- |
-| `GCP_PROJECT_ID`             | GCP プロジェクト ID                     |
-| `GCP_REGION`                 | リージョン (default: `asia-northeast1`) |
-| `CLOUD_TASKS_QUEUE`          | キュー名 (default: `hn-processor`)      |
-| `PROCESSOR_URL`              | Processor の Cloud Run URL              |
-| `SERVICE_ACCOUNT_EMAIL`      | タスク投入用サービスアカウント          |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | ローカル実行時のみ (JSON文字列)         |
+バインディングのみ。シークレット不要。
 
-### processor (Cloud Run Service)
+### backend-worker (wrangler secret で投入)
 
-| 変数                        | 説明                                      |
-| --------------------------- | ----------------------------------------- |
-| `GEMINI_API_KEY`            | Gemini API キー                           |
-| `CLOUDFLARE_ACCOUNT_ID`     | Cloudflare アカウント ID                  |
-| `CLOUDFLARE_D1_DATABASE_ID` | D1 データベース ID                        |
-| `CLOUDFLARE_API_TOKEN`      | Cloudflare API トークン (D1 書き込み権限) |
-| `MAX_COMMENTS`              | 要約に使う抽出コメント最大数              |
-| `PORT`                      | HTTP ポート (default: `8080`)             |
+| 変数             | 説明            |
+| ---------------- | --------------- |
+| `GEMINI_API_KEY` | Gemini API キー |
+| `JINA_API_KEY`   | Jina API キー   |
+
+非機密設定 (`MAX_COMMENTS`) は `backend/wrangler.toml` の `[vars]` に直書き。
 
 ## セットアップ手順
 
-`env.example` をコピーして値を埋める。Claude Code を使う場合は `/setup-env` コマンドで対話的に作成できる。
+`.env.example` をコピーして値を埋める。
 
 ```bash
-# Claude Code を使う場合
-/setup-env
-
-# 手動で作成する場合
-cp env.example env
-# env を編集して各値を記入
-source env
+cp .env.example .env
+# .env を編集して各値を記入
 ```
 
-GitHub Secrets/Variables への反映は `mise run sync-github` で行う（`gh` CLI
-認証済みであること）。
-
-### 1. GCP インフラ構築
+GitHub Secrets への反映:
 
 ```bash
-bash scripts/setup.sh
+bash scripts/sync-github-env.sh
 ```
 
-### 2. Cloudflare D1 データベース作成
+### 1. 依存パッケージインストール
 
 ```bash
-cd worker
 npm install
+```
+
+### 2. Cloudflare D1 データベース作成（初回のみ）
+
+```bash
+cd feed
 npx wrangler d1 create hn-feed
 ```
 
-出力された `database_id` を `wrangler.toml` に記入し、`CLOUDFLARE_D1_DATABASE_ID` を env に設定する。
+出力された `database_id` を `feed/wrangler.toml` と `backend/wrangler.toml` の
+両方に記入し、`CLOUDFLARE_D1_DATABASE_ID` を env に設定する。
 
 ```bash
 npx wrangler d1 migrations apply hn-feed --remote
 ```
 
-### 3. Processor デプロイ
+### 3. CF Queue 作成（初回のみ）
 
 ```bash
-bash scripts/deploy-processor.sh
+cd backend
+npx wrangler queues create hn-processor
 ```
 
-### 4. Worker デプロイ
+### 4. シークレット投入（backend-worker）
 
 ```bash
-cd worker
-npx wrangler deploy
+cd backend
+wrangler secret put GEMINI_API_KEY
+wrangler secret put JINA_API_KEY
 ```
 
-### 5. Poller デプロイ (Cloud Run Job + Cloud Scheduler)
+### 5. デプロイ
 
 ```bash
-bash scripts/deploy-poller.sh
+npm -w feed run deploy
+npm -w backend run deploy
 ```
 
 ### 6. Inoreader で RSS 購読
 
-`https://hn-feed.xxx.workers.dev/feed.xml` を Inoreader に登録。
+`https://hn-feed.<your-subdomain>.workers.dev/feed.xml` を Inoreader に登録。
 
 ## ローカル実行
 
-`env` を `source` してから起動する。`GOOGLE_SERVICE_ACCOUNT_KEY`
-はローカル実行時のみ必要（GCP メタデータサーバーが使えないため）。
-
-Processor の動作確認:
-
 ```bash
-source env
-deno task processor
+# feed-worker
+npm -w feed run dev
 
-# 別ターミナルで動作確認
-curl -X POST http://localhost:8080/process \
-  -H "Content-Type: application/json" \
-  -d '{"itemId": 43000000}'
+# backend-worker (scheduled を手動発火)
+npm -w backend run dev:scheduled
 ```
 
-Poller のローカル実行:
-
-```bash
-source env
-deno task poller
-```
+`wrangler tail -e production` でリアルタイムログ確認。
 
 ## 掲載条件
 
-Hacker News トップページから `poller/filter.ts` で実装された条件で抽出。
+`shared/filter.ts` で実装された以下の条件をすべて満たす記事を掲載。
+
+- velocity（スコア ÷ 経過時間）が 30 points/hour 以上
+- 投稿から 1 時間以上経過、またはコメント 10 件以上

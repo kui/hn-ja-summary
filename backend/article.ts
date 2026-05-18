@@ -50,7 +50,8 @@ async function fetchRaw(url: string): Promise<string | null> {
   if (!resp.ok) return null;
   const contentType = resp.headers.get("content-type") ?? "";
   if (
-    !contentType.includes("text/html") && !contentType.includes("text/plain")
+    !contentType.includes("text/html") &&
+    !contentType.includes("text/plain")
   ) {
     return null;
   }
@@ -74,7 +75,7 @@ export async function fetchArticleContent(
       "  [article] Jina returned no usable content, trying raw fetch",
     );
   } catch (err) {
-    console.log(`  [article] Jina failed (${err}), trying raw fetch`);
+    console.warn(`  [article] Jina failed (${err}), trying raw fetch`);
   }
 
   try {
@@ -87,7 +88,7 @@ export async function fetchArticleContent(
     }
     console.log("  [article] raw fetch returned no usable content");
   } catch (err) {
-    console.log(`  [article] raw fetch failed: ${err}`);
+    console.warn(`  [article] raw fetch failed: ${err}`);
   }
 
   return { status: "fetch_failed" };

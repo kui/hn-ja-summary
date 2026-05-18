@@ -1,31 +1,35 @@
-import { format } from "sql-formatter";
-import { expandGlob } from "@std/fs/expand-glob";
+#!/usr/bin/env node
+import { format, type FormatOptionsWithLanguage } from "sql-formatter";
+import { readFileSync, writeFileSync } from "node:fs";
 
-const checkMode = Deno.args.includes("--check");
-const pattern = Deno.args.find((a) => !a.startsWith("--")) ?? "**/*.sql";
+const args: string[] = process.argv.slice(2);
+const checkMode: boolean = args.includes("--check");
+const files: string[] = args.filter((a) => !a.startsWith("-"));
+
+const formatOptions: FormatOptionsWithLanguage = {
+  language: "sqlite",
+  tabWidth: 2,
+  keywordCase: "upper",
+  dataTypeCase: "upper",
+  functionCase: "upper",
+  logicalOperatorNewline: "before",
+  expressionWidth: 60,
+};
 
 let hasUnformatted = false;
 
-for await (const entry of expandGlob(pattern)) {
-  const original = await Deno.readTextFile(entry.path);
-  const formatted = format(original, {
-    language: "sqlite",
-    tabWidth: 2,
-    keywordCase: "upper",
-    dataTypeCase: "upper",
-    functionCase: "upper",
-    logicalOperatorNewline: "before",
-    expressionWidth: 60,
-  });
+for (const file of files) {
+  const original: string = readFileSync(file, "utf-8");
+  const formatted: string = format(original, formatOptions);
   if (original !== formatted) {
     if (checkMode) {
-      console.error(`not formatted: ${entry.path}`);
+      console.error(`not formatted: ${file}`);
       hasUnformatted = true;
     } else {
-      await Deno.writeTextFile(entry.path, formatted);
-      console.log(`formatted: ${entry.path}`);
+      writeFileSync(file, formatted, "utf-8");
+      console.log(`formatted: ${file}`);
     }
   }
 }
 
-if (hasUnformatted) Deno.exit(1);
+if (hasUnformatted) process.exit(1);

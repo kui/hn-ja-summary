@@ -1,6 +1,6 @@
 name = "hn-feed"
-main = "src/index.ts"
-compatibility_date = "2026-04-20"
+main = "index.ts"
+compatibility_date = "2026-05-18"
 
 [vars]
 WORKERS_DOMAIN = "hn-feed.<your-subdomain>.workers.dev"
@@ -9,4 +9,4 @@ WORKERS_DOMAIN = "hn-feed.<your-subdomain>.workers.dev"
 binding = "DB"
 database_name = "hn-feed"
 database_id = "e3e14322-b111-49a2-b734-6316fc3c6809"
-migrations_dir = "migrations"
+migrations_dir = "../migrations"

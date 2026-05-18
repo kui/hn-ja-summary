@@ -1,40 +1,31 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import type { FeedItem } from "@hn-feed/shared/feed";
 
 interface Env {
   DB: D1Database;
   WORKERS_DOMAIN: string;
 }
 
-interface FeedItem {
-  id: number;
-  title: string;
-  articleUrl: string;
-  hnUrl: string;
-  summaryHtml: string;
-  processedAt: number; // Unix timestamp (ms)
-  model: string;
-}
-
 const MAX_FEED_ITEMS = 20;
 
 const FEED_SQL = `
 SELECT id, title,
-  article_url  AS articleUrl,
-  hn_url       AS hnUrl,
+  article_url AS articleUrl,
+  hn_url AS hnUrl,
   summary_html AS summaryHtml,
-  processed_at_ms AS processedAt,
+  created_at_ms AS createdAt,
   model
 FROM feed_items
-ORDER BY processed_at_ms DESC
+ORDER BY created_at_ms DESC
 LIMIT ?
 `;
 
 const ITEM_SQL = `
 SELECT id, title,
-  article_url  AS articleUrl,
-  hn_url       AS hnUrl,
+  article_url AS articleUrl,
+  hn_url AS hnUrl,
   summary_html AS summaryHtml,
-  processed_at_ms AS processedAt,
+  created_at_ms AS createdAt,
   model
 FROM feed_items
 WHERE id = ?
@@ -93,7 +84,7 @@ function generateRSS(
   const itemsXml = items
     .map((item) => {
       const itemPageUrl = `https://${workersDomain}/items/${item.id}`;
-      const pubDate = new Date(item.processedAt).toUTCString();
+      const pubDate = new Date(item.createdAt).toUTCString();
       return `
   <item>
     <title><![CDATA[${item.title}]]></title>
@@ -146,7 +137,7 @@ function renderItemPage(item: FeedItem): string {
     ｜
     <a href="${item.hnUrl}" target="_blank" rel="noopener">HNディスカッション</a>
     ｜
-    処理日時: ${new Date(item.processedAt).toLocaleString("ja-JP", {
+    処理日時: ${new Date(item.createdAt).toLocaleString("ja-JP", {
       timeZone: "Asia/Tokyo",
     })} ｜ モデル: ${esc(item.model)}
   </div>

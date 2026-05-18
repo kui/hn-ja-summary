@@ -4,80 +4,33 @@ on:
   push:
     branches: [production]
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
-  deploy-worker:
+  deploy-feed:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: worker
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
-          cache-dependency-path: worker/package-lock.json
       - run: npm ci
-      - run: npx wrangler deploy
+      - run: npx wrangler d1 migrations apply hn-feed --remote
+        working-directory: feed
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - run: npm -w feed run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-  deploy-poller:
+  deploy-backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: google-github-actions/auth@v3
+      - uses: actions/setup-node@v6
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - uses: docker/setup-buildx-action@v4
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker gcr.io --quiet
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: poller/Dockerfile
-          push: true
-          tags: gcr.io/${{ secrets.GCP_PROJECT_ID }}/hn-feed-poller:latest
-      - name: Deploy
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm -w backend run deploy
         env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
-          CLOUD_TASKS_QUEUE: ${{ vars.CLOUD_TASKS_QUEUE || 'hn-processor' }}
-          PROCESSOR_URL: ${{ secrets.PROCESSOR_URL }}
-          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-        run: bash scripts/deploy-poller.sh
-
-  deploy-processor:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-      - uses: docker/setup-buildx-action@v4
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker gcr.io --quiet
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: processor/Dockerfile
-          push: true
-          tags: gcr.io/${{ secrets.GCP_PROJECT_ID }}/hn-feed-processor:latest
-      - name: Deploy
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
-          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          MAX_COMMENTS: ${{ vars.MAX_COMMENTS || '20' }}
-        run: bash scripts/deploy-processor.sh

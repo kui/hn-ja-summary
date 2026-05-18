@@ -1,6 +1,2 @@
 [tools]
-deno = "2.7"
-
-[tasks.sync-github]
-description = "Push .env to GitHub Secrets/Variables"
-run = "bash scripts/sync-github-env.sh"
+node = "24"

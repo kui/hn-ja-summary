@@ -1,4 +1,4 @@
-import type { ArticleResult } from "./article.ts";
+import type { ArticleResult } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
 export const MODEL = "gemini-3.1-flash-lite";
@@ -36,9 +36,8 @@ export async function generateSummary(
   comments: string[],
 ): Promise<string> {
   const hnUrl = `https://news.ycombinator.com/item?id=${itemId}`;
-  const commentsText = comments.length > 0
-    ? comments.join("\n\n")
-    : "（コメントなし）";
+  const commentsText =
+    comments.length > 0 ? comments.join("\n\n") : "（コメントなし）";
 
   const prompt = `以下のHacker News記事とHNコメントを日本語で要約。
 
@@ -106,6 +105,6 @@ ${commentsText}
     throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }
 
-  const data = await resp.json() as GeminiResponse;
+  const data = (await resp.json()) as GeminiResponse;
   return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
 }

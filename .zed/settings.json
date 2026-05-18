@@ -1,12 +1,6 @@
 {
   "languages": {
-    "TypeScript": {
-      "language_servers": ["deno", "!typescript-language-server", "!vtsls"],
-      "formatter": "language_server"
-    },
-    "JavaScript": {
-      "language_servers": ["deno", "!typescript-language-server", "!vtsls"],
-      "formatter": "language_server"
-    }
+    "TypeScript": { "language_servers": ["vtsls", "!deno"] },
+    "JavaScript": { "language_servers": ["vtsls", "!deno"] }
   }
 }

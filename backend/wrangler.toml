@@ -1,0 +1,22 @@
+name = "hn-feed-backend"
+main = "index.ts"
+compatibility_date = "2026-05-18"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hn-feed"
+database_id = "e3e14322-b111-49a2-b734-6316fc3c6809"
+migrations_dir = "../migrations"
+
+[[queues.producers]]
+binding = "QUEUE"
+queue = "hn-processor"
+
+[[queues.consumers]]
+queue = "hn-processor"
+max_batch_size = 5
+max_batch_timeout = 30
+max_retries = 3
