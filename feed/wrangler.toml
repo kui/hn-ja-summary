@@ -5,7 +5,7 @@ compatibility_date = "2026-05-18"
 logpush = true
 
 [vars]
-WORKERS_DOMAIN = "hn-feed.<your-subdomain>.workers.dev"
+WORKERS_DOMAIN = "hn-summary.k-ui.jp"
 
 [[d1_databases]]
 binding = "DB"
