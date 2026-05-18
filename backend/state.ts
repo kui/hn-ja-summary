@@ -1,5 +1,3 @@
-import type { D1Database } from "@cloudflare/workers-types";
-
 // enqueued: poller がキュー追加済み（リトライ中を含む）
 // completed: processor が D1 への書き込みまで成功
 // error: processor が処理失敗（次回 poller 実行時に再エンキュー）

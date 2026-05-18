@@ -1,10 +1,4 @@
-import type { D1Database } from "@cloudflare/workers-types";
 import type { FeedItem } from "@hn-feed/shared/feed";
-
-interface Env {
-  DB: D1Database;
-  WORKERS_DOMAIN: string;
-}
 
 const MAX_FEED_ITEMS = 20;
 

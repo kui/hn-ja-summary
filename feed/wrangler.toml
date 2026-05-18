@@ -1,6 +1,8 @@
+"$schema" = "./node_modules/wrangler/config-schema.json"
 name = "hn-feed"
 main = "index.ts"
 compatibility_date = "2026-05-18"
+logpush = true
 
 [vars]
 WORKERS_DOMAIN = "hn-feed.<your-subdomain>.workers.dev"

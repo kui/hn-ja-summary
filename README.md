@@ -50,8 +50,6 @@ scripts/     GitHub Secrets 同期スクリプト
 | `GEMINI_API_KEY` | Gemini API キー |
 | `JINA_API_KEY`   | Jina API キー   |
 
-非機密設定 (`MAX_COMMENTS`) は `backend/wrangler.toml` の `[vars]` に直書き。
-
 ## セットアップ手順
 
 `.env.example` をコピーして値を埋める。

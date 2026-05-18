@@ -1,4 +1,3 @@
-import type { D1Database, MessageBatch } from "@cloudflare/workers-types";
 import {
   fetchHNItemWithComments,
   flattenTopComments,
@@ -7,7 +6,6 @@ import type { FeedItem } from "@hn-feed/shared/feed";
 import { fetchArticleContent } from "./article";
 import { GeminiQuotaError, generateSummary, MODEL } from "./gemini";
 import { setCompleted, setError, setSkipped } from "./state";
-import type { Env } from "./env";
 
 // 要約に含めるコメント最大数
 const MAX_COMMENTS = 100;

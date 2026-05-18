@@ -1,11 +1,9 @@
-import type { ScheduledEvent } from "@cloudflare/workers-types";
 import { fetchCandidateStories } from "@hn-feed/shared/hn";
 import { shouldProcess } from "@hn-feed/shared/filter";
 import { batchGetStates, setEnqueued } from "./state";
-import type { Env } from "./env";
 
 export async function scheduled(
-  _event: ScheduledEvent,
+  _event: ScheduledController,
   env: Env,
   _ctx: ExecutionContext,
 ): Promise<void> {

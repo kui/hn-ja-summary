@@ -1,9 +1,14 @@
+"$schema" = "./node_modules/wrangler/config-schema.json"
 name = "hn-feed-backend"
 main = "index.ts"
 compatibility_date = "2026-05-18"
+logpush = true
 
 [triggers]
 crons = ["*/15 * * * *"]
+
+[secrets]
+required = ["GEMINI_API_KEY", "JINA_API_KEY"]
 
 [[d1_databases]]
 binding = "DB"

@@ -20,13 +20,13 @@ for f in $STAGED; do
 done
 
 if [ "$FEED" = true ]; then
-  npx tsc -p feed/tsconfig.json --noEmit
+  npm run ts:check:feed
 fi
 if [ "$BACKEND" = true ]; then
-  npx tsc -p backend/tsconfig.json --noEmit
+  npm run ts:check:backend
 fi
 if [ "$SCRIPTS" = true ]; then
-  npx tsc -p scripts/tsconfig.json --noEmit
+  npm run ts:check:scripts
 fi
 
 npm run lint:check

@@ -6,7 +6,8 @@
     "dev": "wrangler dev",
     "dev:scheduled": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "ts:check": "npm run types && tsc --noEmit"
   },
   "dependencies": {
     "@hn-feed/shared": "*"
