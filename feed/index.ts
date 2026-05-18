@@ -126,8 +126,8 @@ function generateRSS(
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>HN Summary Feed</title>
-    <link>https://news.ycombinator.com</link>
-    <description>Summarized Hacker News trending articles (日本語)</description>
+    <link>https://${workersDomain}/</link>
+    <description>Hacker News のトレンド記事を日本語で要約</description>
     <language>ja</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${esc(feedUrl)}" rel="self" type="application/rss+xml"/>
@@ -172,6 +172,7 @@ function renderIndexPage(items: FeedItem[]): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HN Summary Feed</title>
+  <meta name="description" content="Hacker News のトレンド記事を日本語で要約">
   <link rel="alternate" type="application/rss+xml" title="HN Summary Feed" href="/feed.xml">
   <style>
     ${PAGE_STYLE}
@@ -187,7 +188,7 @@ function renderIndexPage(items: FeedItem[]): string {
 <body>
   <h1>HN Summary Feed</h1>
   <div class="site-desc">
-    Hacker News のトレンド記事を日本語で要約するサービスです。
+    Hacker News のトレンド記事を日本語で要約
     <a href="/feed.xml">RSS</a> ｜
     <a href="${GITHUB_REPO}" target="_blank" rel="noopener">GitHub</a>
   </div>
