@@ -20,7 +20,7 @@ let hasUnformatted = false;
 
 for (const file of files) {
   const original: string = readFileSync(file, "utf-8");
-  const formatted: string = format(original, formatOptions);
+  const formatted: string = format(original, formatOptions) + "\n";
   if (original !== formatted) {
     if (checkMode) {
       console.error(`not formatted: ${file}`);
