@@ -26,6 +26,13 @@ npm run lint
 
 個別ワークスペースのみ確認したい場合は `tsc -p feed/tsconfig.json --noEmit` などをルートから実行する。
 
+## 依存ソフトウェアのバージョン選定
+
+新しく導入する GitHub Actions・npm パッケージ・mise ツールなどのバージョンを指定する際は、
+記憶や推測で書かず必ず最新版を確認すること（例: `gh api repos/<owner>/<repo>/releases/latest`、
+`npm view <pkg> version`）。意図的に古いバージョンを使う場合のみ、その理由をコミットメッセージか
+コメントで明示すること。
+
 ## README の更新確認
 
 コードや設定に変更を加えた際は、README.md の内容も更新が必要でないか必ず確認すること。
