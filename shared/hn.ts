@@ -68,7 +68,7 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 }
 
 export async function fetchCandidateStories(): Promise<HNItem[]> {
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
   const since = now - SEARCH_WINDOW_SECONDS;
   const until = now - MIN_AGE_HOURS;
 

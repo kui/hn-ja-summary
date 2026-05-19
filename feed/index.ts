@@ -110,13 +110,12 @@ function generateRSS(
   const itemsXml = items
     .map((item) => {
       const itemPageUrl = `https://${workersDomain}/items/${item.id}`;
-      const pubDate = new Date(item.createdAt).toUTCString();
       return `
   <item>
     <title><![CDATA[${item.title}]]></title>
     <link>${itemPageUrl}</link>
     <guid isPermaLink="true">${itemPageUrl}</guid>
-    <pubDate>${pubDate}</pubDate>
+    <pubDate>${toRFC822(item.createdAt)}</pubDate>
     <description><![CDATA[${item.summaryHtml}<p style="color:#888;font-size:.85em">要約モデル: ${item.model}</p>]]></description>
   </item>`;
     })
@@ -129,11 +128,15 @@ function generateRSS(
     <link>https://${workersDomain}/</link>
     <description>Hacker News のトレンド記事を日本語で要約</description>
     <language>ja</language>
-    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+    <lastBuildDate>${toRFC822(Temporal.Now.instant().epochMilliseconds)}</lastBuildDate>
     <atom:link href="${esc(feedUrl)}" rel="self" type="application/rss+xml"/>
 ${itemsXml}
   </channel>
 </rss>`;
+}
+
+function toRFC822(epochMs: number): string {
+  return new Date(epochMs).toUTCString();
 }
 
 function extractFirstH2(html: string): string {
@@ -154,9 +157,9 @@ function renderIndexPage(items: FeedItem[]): string {
     .map((item) => {
       const jaTitle = esc(extractFirstH2(item.summaryHtml) || item.title);
       const firstP = extractFirstP(item.summaryHtml);
-      const date = new Date(item.createdAt).toLocaleString("ja-JP", {
-        timeZone: "Asia/Tokyo",
-      });
+      const date = Temporal.Instant.fromEpochMilliseconds(item.createdAt)
+        .toZonedDateTimeISO("Asia/Tokyo")
+        .toLocaleString("ja-JP");
       return `
   <article>
     <div class="meta">${date}</div>

@@ -99,7 +99,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
     articleUrl,
     hnUrl,
     summaryHtml,
-    createdAt: Date.now(),
+    createdAt: Temporal.Now.instant().epochMilliseconds,
     model: MODEL,
   };
 
