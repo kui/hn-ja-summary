@@ -20,7 +20,7 @@ export async function batchGetStates(
 }
 
 export async function setEnqueued(db: D1Database, id: number): Promise<void> {
-  const now = Date.now();
+  const now = Temporal.Now.instant().epochMilliseconds;
   await db
     .prepare(
       `INSERT INTO processed_items (id, state, created_at_ms, enqueued_at_ms, updated_at_ms)
@@ -35,7 +35,7 @@ export async function setEnqueued(db: D1Database, id: number): Promise<void> {
 }
 
 export async function setCompleted(db: D1Database, id: number): Promise<void> {
-  const now = Date.now();
+  const now = Temporal.Now.instant().epochMilliseconds;
   await db
     .prepare(
       `INSERT INTO processed_items (id, state, created_at_ms, completed_at_ms, updated_at_ms)
@@ -54,7 +54,7 @@ export async function setError(
   id: number,
   message: string,
 ): Promise<void> {
-  const now = Date.now();
+  const now = Temporal.Now.instant().epochMilliseconds;
   await db
     .prepare(
       `INSERT INTO processed_items (id, state, created_at_ms, error_message, updated_at_ms)
@@ -73,7 +73,7 @@ export async function setSkipped(
   id: number,
   reason: string,
 ): Promise<void> {
-  const now = Date.now();
+  const now = Temporal.Now.instant().epochMilliseconds;
   await db
     .prepare(
       `INSERT INTO processed_items (id, state, created_at_ms, skip_reason, updated_at_ms)

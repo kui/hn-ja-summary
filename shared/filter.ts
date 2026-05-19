@@ -5,7 +5,7 @@ export const MIN_AGE_HOURS = 1.0;
 export const MIN_COMMENTS = 10;
 
 export function shouldProcess(item: HNItem): boolean {
-  const now = Date.now() / 1000;
+  const now = Temporal.Now.instant().epochMilliseconds / 1000;
   const ageHours = (now - item.time) / 3600;
   const velocity = ageHours > 0.1 ? item.score / ageHours : 0;
 
