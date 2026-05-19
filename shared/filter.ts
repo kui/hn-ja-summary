@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import type { HNItem } from "./hn";
 
 export const VELOCITY_THRESHOLD = 50; // points per hour

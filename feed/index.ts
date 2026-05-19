@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import type { FeedItem } from "@hn-feed/shared/feed";
 
 const MAX_FEED_ITEMS = 20;
