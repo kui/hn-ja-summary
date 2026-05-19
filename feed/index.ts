@@ -3,7 +3,7 @@ import type { FeedItem } from "@hn-feed/shared/feed";
 const MAX_FEED_ITEMS = 20;
 const GITHUB_REPO = "https://github.com/kui/hn-ja-summary";
 
-const FEED_SQL = `
+const FEED_SQL_DEFAULT = `
 SELECT id, title,
   article_url AS articleUrl,
   hn_url AS hnUrl,
@@ -12,6 +12,27 @@ SELECT id, title,
   model
 FROM feed_items
 ORDER BY created_at_ms DESC
+LIMIT ?
+`;
+
+const FEED_SQL_CURSOR = `
+SELECT id, title,
+  article_url AS articleUrl,
+  hn_url AS hnUrl,
+  summary_html AS summaryHtml,
+  created_at_ms AS createdAt,
+  model
+FROM feed_items
+WHERE created_at_ms <= ?
+ORDER BY created_at_ms DESC
+LIMIT ?
+`;
+
+const PREV_CURSOR_SQL = `
+SELECT created_at_ms AS createdAt
+FROM feed_items
+WHERE created_at_ms > ?
+ORDER BY created_at_ms ASC
 LIMIT ?
 `;
 
@@ -48,7 +69,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === "/" || path === "") return await handleRoot(env);
+    if (path === "/" || path === "") return await handleRoot(env, url);
     if (path === "/feed.xml") return await handleFeed(env);
 
     const m = path.match(/^\/items\/(\d+)$/);
@@ -58,12 +79,35 @@ export default {
   },
 };
 
-async function handleRoot(env: Env): Promise<Response> {
-  const { results } = await env.DB.prepare(FEED_SQL)
-    .bind(MAX_FEED_ITEMS)
-    .all<FeedItem>();
+async function handleRoot(env: Env, url: URL): Promise<Response> {
+  const FETCH = MAX_FEED_ITEMS + 1;
+  const cursorParam = url.searchParams.get("cursor");
+  const cursor = cursorParam ? parseInt(cursorParam, 10) : null;
+  const validCursor = cursor !== null && !isNaN(cursor);
 
-  return new Response(renderIndexPage(results), {
+  const [pageResult, prevResult] = await Promise.all([
+    validCursor
+      ? env.DB.prepare(FEED_SQL_CURSOR).bind(cursor, FETCH).all<FeedItem>()
+      : env.DB.prepare(FEED_SQL_DEFAULT).bind(FETCH).all<FeedItem>(),
+    validCursor
+      ? env.DB.prepare(PREV_CURSOR_SQL)
+          .bind(cursor, MAX_FEED_ITEMS)
+          .all<{ createdAt: number }>()
+      : Promise.resolve({ results: [] as { createdAt: number }[] }),
+  ]);
+
+  const raw = pageResult.results;
+  const hasMore = raw.length > MAX_FEED_ITEMS;
+  const items = raw.slice(0, MAX_FEED_ITEMS);
+  const prevItems = prevResult.results;
+
+  const nextUrl = hasMore ? `/?cursor=${raw[MAX_FEED_ITEMS].createdAt}` : null;
+  const prevUrl =
+    prevItems.length > 0
+      ? `/?cursor=${prevItems[prevItems.length - 1].createdAt}`
+      : null;
+
+  return new Response(renderIndexPage(items, prevUrl, nextUrl), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "public, max-age=600",
@@ -72,7 +116,7 @@ async function handleRoot(env: Env): Promise<Response> {
 }
 
 async function handleFeed(env: Env): Promise<Response> {
-  const { results } = await env.DB.prepare(FEED_SQL)
+  const { results } = await env.DB.prepare(FEED_SQL_DEFAULT)
     .bind(MAX_FEED_ITEMS)
     .all<FeedItem>();
 
@@ -149,7 +193,11 @@ function extractFirstP(html: string): string {
   return m ? m[1].trim() : "";
 }
 
-function renderIndexPage(items: FeedItem[]): string {
+function renderIndexPage(
+  items: FeedItem[],
+  prevUrl: string | null,
+  nextUrl: string | null,
+): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -169,6 +217,15 @@ function renderIndexPage(items: FeedItem[]): string {
     })
     .join("\n");
 
+  const paginationHtml =
+    prevUrl || nextUrl
+      ? `
+  <nav class="pagination">
+    ${prevUrl ? `<a href="${prevUrl}">← 新しい記事</a>` : `<span class="disabled">← 新しい記事</span>`}
+    ${nextUrl ? `<a href="${nextUrl}">古い記事 →</a>` : `<span class="disabled">古い記事 →</span>`}
+  </nav>`
+      : "";
+
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -186,6 +243,10 @@ function renderIndexPage(items: FeedItem[]): string {
     article p{margin:.5rem 0 0;color:#444;font-size:.95rem}
     .site-desc{color:#555;font-size:.95rem;margin-bottom:2rem}
     .site-desc a{color:#ff6600}
+    .pagination{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1rem;border-top:1px solid #eee}
+    .pagination a{color:#ff6600;text-decoration:none}
+    .pagination a:hover{text-decoration:underline}
+    .pagination .disabled{color:#ccc}
   </style>
 </head>
 <body>
@@ -196,6 +257,7 @@ function renderIndexPage(items: FeedItem[]): string {
     <a href="${GITHUB_REPO}" target="_blank" rel="noopener">GitHub</a>
   </div>
 ${itemsHtml}
+${paginationHtml}
 </body>
 </html>`;
 }
