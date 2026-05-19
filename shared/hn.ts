@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter";
 
 //
