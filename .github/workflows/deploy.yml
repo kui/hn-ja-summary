@@ -9,10 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: "npm"
+      - uses: jdx/mise-action@v4
       - run: npm ci
       - run: npx wrangler d1 migrations apply hn-feed --remote
         working-directory: feed
@@ -26,10 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: "npm"
+      - uses: jdx/mise-action@v4
       - run: npm ci
       - run: npm -w backend run deploy
         env:

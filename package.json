@@ -22,7 +22,7 @@
     "lint:check": "eslint"
   },
   "devDependencies": {
-    "@types/node": "^25.8.0",
+    "@types/node": "^25.9.0",
     "eslint": "^10.4.0",
     "prettier": "^3.8.3",
     "sql-formatter": "^15.8.0",
