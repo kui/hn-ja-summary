@@ -2,7 +2,7 @@ import { Temporal } from "temporal-polyfill";
 import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
 import { stripHtml } from "./html.ts";
 
-//
+// Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
 
 export interface HNItem {
@@ -25,9 +25,22 @@ export interface AlgoliaItem {
   text: string | null;
   author: string;
   points: number;
-  num_comments?: number;
   created_at: string;
   children: AlgoliaComment[] | null;
+}
+
+export function countComments(item: AlgoliaItem): number | null {
+  if (!item.children) return null;
+  let count = 0;
+  const stack = [...item.children];
+  while (stack.length > 0) {
+    const comment = stack.pop()!;
+    count++;
+    if (comment.children) {
+      stack.push(...comment.children);
+    }
+  }
+  return count;
 }
 
 export interface AlgoliaComment {

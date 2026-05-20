@@ -1,5 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import {
+  countComments,
   fetchHNItemWithComments,
   flattenTopComments,
 } from "@hn-feed/shared/hn";
@@ -73,7 +74,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   const hnPostedAt = Temporal.Instant.from(
     algoliaItem.created_at,
   ).epochMilliseconds;
-  const commentCount = algoliaItem.num_comments ?? null;
+  const commentCount = countComments(algoliaItem);
   const points = algoliaItem.points;
 
   const postText = algoliaItem.text ? stripHtml(algoliaItem.text) : null;
