@@ -9,7 +9,7 @@ export interface HNItem {
   type: string;
   by: string;
   time: number;
-  score: number;
+  points: number;
   descendants?: number;
   title?: string;
   url?: string;
@@ -24,6 +24,7 @@ export interface AlgoliaItem {
   text: string | null;
   author: string;
   points: number;
+  num_comments?: number;
   created_at: string;
   children: AlgoliaComment[] | null;
 }
@@ -60,7 +61,7 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
     type: "story",
     by: hit.author,
     time: hit.created_at_i,
-    score: hit.points ?? 0,
+    points: hit.points ?? 0,
     descendants: hit.num_comments ?? 0,
     title: hit.title ?? undefined,
     url: hit.url ?? undefined,

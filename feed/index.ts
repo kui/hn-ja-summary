@@ -10,7 +10,16 @@ SELECT id, title,
   hn_url AS hnUrl,
   summary_html AS summaryHtml,
   created_at_ms AS createdAt,
-  model
+  model,
+  hn_posted_at_ms AS hnPostedAt,
+  comment_count AS commentCount,
+  points,
+  comments_used AS commentsUsed,
+  article_chars AS articleChars,
+  article_fetch_method AS articleFetchMethod,
+  input_tokens AS inputTokens,
+  output_tokens AS outputTokens,
+  updated_at_ms AS updatedAt
 FROM feed_items
 ORDER BY created_at_ms DESC
 LIMIT ?
@@ -22,7 +31,16 @@ SELECT id, title,
   hn_url AS hnUrl,
   summary_html AS summaryHtml,
   created_at_ms AS createdAt,
-  model
+  model,
+  hn_posted_at_ms AS hnPostedAt,
+  comment_count AS commentCount,
+  points,
+  comments_used AS commentsUsed,
+  article_chars AS articleChars,
+  article_fetch_method AS articleFetchMethod,
+  input_tokens AS inputTokens,
+  output_tokens AS outputTokens,
+  updated_at_ms AS updatedAt
 FROM feed_items
 WHERE created_at_ms <= ?
 ORDER BY created_at_ms DESC
@@ -43,7 +61,16 @@ SELECT id, title,
   hn_url AS hnUrl,
   summary_html AS summaryHtml,
   created_at_ms AS createdAt,
-  model
+  model,
+  hn_posted_at_ms AS hnPostedAt,
+  comment_count AS commentCount,
+  points,
+  comments_used AS commentsUsed,
+  article_chars AS articleChars,
+  article_fetch_method AS articleFetchMethod,
+  input_tokens AS inputTokens,
+  output_tokens AS outputTokens,
+  updated_at_ms AS updatedAt
 FROM feed_items
 WHERE id = ?
 `;
@@ -184,6 +211,16 @@ function toRFC822(epochMs: number): string {
   return new Date(epochMs).toUTCString();
 }
 
+function fmtDate(ms: number | null): string {
+  return ms
+    ? new Date(ms).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
+    : "-";
+}
+
+function fmtVal<T>(v: T | null): string {
+  return v !== null ? String(v) : "-";
+}
+
 function extractFirstH2(html: string): string {
   const m = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
   return m ? m[1].replace(/<[^>]+>/g, "").trim() : "";
@@ -275,20 +312,30 @@ function renderItemPage(item: FeedItem): string {
   <title>${esc(item.title)}</title>
   <style>
     ${PAGE_STYLE}
+    .meta-grid{display:grid;grid-template-columns:auto 1fr;gap:.15rem .75rem;font-size:.85rem;color:#666;margin-bottom:1.5rem}
+    .meta-grid dt{font-weight:600;white-space:nowrap}
+    .meta-grid dd{margin:0}
+    .meta-grid a{color:#ff6600}
   </style>
 </head>
 <body>
   <p class="meta"><a href="/">← 一覧へ</a></p>
   <h1>${esc(item.title)}</h1>
-  <div class="meta">
-    <a href="${item.articleUrl}" target="_blank" rel="noopener">元記事</a>
-    ｜
-    <a href="${item.hnUrl}" target="_blank" rel="noopener">HNディスカッション</a>
-    ｜
-    処理日時: ${new Date(item.createdAt).toLocaleString("ja-JP", {
-      timeZone: "Asia/Tokyo",
-    })} ｜ モデル: ${esc(item.model)}
-  </div>
+  <dl class="meta-grid">
+    <dt>元記事</dt><dd><a href="${item.articleUrl}" target="_blank" rel="noopener">${esc(item.articleUrl)}</a></dd>
+    <dt>HNディスカッション</dt><dd><a href="${item.hnUrl}" target="_blank" rel="noopener">${esc(item.hnUrl)}</a></dd>
+    <dt>HN投稿日時</dt><dd>${fmtDate(item.hnPostedAt)}</dd>
+    <dt>ポイント</dt><dd>${fmtVal(item.points)}</dd>
+    <dt>コメント数</dt><dd>${fmtVal(item.commentCount)}</dd>
+    <dt>要約コメント数</dt><dd>${fmtVal(item.commentsUsed)}</dd>
+    <dt>記事取得方法</dt><dd>${fmtVal(item.articleFetchMethod)}</dd>
+    <dt>元記事文字数</dt><dd>${fmtVal(item.articleChars)}</dd>
+    <dt>入力トークン数</dt><dd>${fmtVal(item.inputTokens)}</dd>
+    <dt>出力トークン数</dt><dd>${fmtVal(item.outputTokens)}</dd>
+    <dt>モデル</dt><dd>${esc(item.model)}</dd>
+    <dt>処理日時</dt><dd>${fmtDate(item.createdAt)}</dd>
+    <dt>更新日時</dt><dd>${fmtDate(item.updatedAt)}</dd>
+  </dl>
   ${item.summaryHtml}
 </body>
 </html>`;

@@ -1,4 +1,4 @@
-import type { ArticleResult } from "./article";
+import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
 export const MODEL = "gemini-3.1-flash-lite";
@@ -15,9 +15,20 @@ interface GeminiResponse {
     content: { parts: Array<{ text: string }> };
     finishReason: string;
   }>;
+  usageMetadata?: {
+    promptTokenCount: number;
+    candidatesTokenCount: number;
+    totalTokenCount: number;
+  };
 }
 
-function articleContentForPrompt(article: ArticleResult): string {
+export interface SummaryResult {
+  summaryHtml: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+function articleContentForPrompt(article: ArticleInput): string {
   if (article.status === "no_url") {
     return "（この記事にはURLがなく本文は存在しません。HNコメントのみを基に要約してください。）";
   }
@@ -32,9 +43,9 @@ export async function generateSummary(
   itemId: number,
   title: string,
   articleUrl: string,
-  article: ArticleResult,
+  article: ArticleInput,
   comments: string[],
-): Promise<string> {
+): Promise<SummaryResult> {
   const hnUrl = `https://news.ycombinator.com/item?id=${itemId}`;
   const commentsText =
     comments.length > 0 ? comments.join("\n\n") : "（コメントなし）";
@@ -106,5 +117,9 @@ ${commentsText}
   }
 
   const data = (await resp.json()) as GeminiResponse;
-  return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+  return {
+    summaryHtml: (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim(),
+    inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+  };
 }

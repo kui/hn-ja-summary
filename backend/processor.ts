@@ -4,6 +4,7 @@ import {
   flattenTopComments,
 } from "@hn-feed/shared/hn";
 import type { FeedItem } from "@hn-feed/shared/feed";
+import type { ArticleInput } from "./article";
 import { fetchArticleContent } from "./article";
 import { GeminiQuotaError, generateSummary, MODEL } from "./gemini";
 import { setCompleted, setError, setSkipped } from "./state";
@@ -15,23 +16,43 @@ async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
   await db
     .prepare(
       `INSERT INTO feed_items
-        (id, created_at_ms, title, article_url, hn_url, summary_html, model)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (id, created_at_ms, updated_at_ms, title, article_url, hn_url, summary_html, model,
+         hn_posted_at_ms, comment_count, points, comments_used, article_chars,
+         article_fetch_method, input_tokens, output_tokens)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
+        updated_at_ms = excluded.updated_at_ms,
         title = excluded.title,
         article_url = excluded.article_url,
         hn_url = excluded.hn_url,
         summary_html = excluded.summary_html,
-        model = excluded.model`,
+        model = excluded.model,
+        hn_posted_at_ms = excluded.hn_posted_at_ms,
+        comment_count = excluded.comment_count,
+        points = excluded.points,
+        comments_used = excluded.comments_used,
+        article_chars = excluded.article_chars,
+        article_fetch_method = excluded.article_fetch_method,
+        input_tokens = excluded.input_tokens,
+        output_tokens = excluded.output_tokens`,
     )
     .bind(
       item.id,
       item.createdAt,
+      item.updatedAt,
       item.title,
       item.articleUrl,
       item.hnUrl,
       item.summaryHtml,
       item.model,
+      item.hnPostedAt,
+      item.commentCount,
+      item.points,
+      item.commentsUsed,
+      item.articleChars,
+      item.articleFetchMethod,
+      item.inputTokens,
+      item.outputTokens,
     )
     .run();
 }
@@ -48,6 +69,9 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   const title = algoliaItem.title ?? `HN Item ${itemId}`;
   const hnUrl = `https://news.ycombinator.com/item?id=${itemId}`;
   const articleUrl = algoliaItem.url ?? hnUrl;
+  const hnPostedAt = new Date(algoliaItem.created_at).getTime();
+  const commentCount = algoliaItem.num_comments ?? null;
+  const points = algoliaItem.points;
 
   const postText = algoliaItem.text
     ? algoliaItem.text
@@ -56,7 +80,8 @@ async function processItem(itemId: number, env: Env): Promise<void> {
         .trim()
     : null;
 
-  let article;
+  let article: ArticleInput;
+  let articleFetchMethod: string;
   if (algoliaItem.url) {
     console.log(`Fetching article: ${algoliaItem.url}`);
     const urlArticle = await fetchArticleContent(
@@ -70,22 +95,30 @@ async function processItem(itemId: number, env: Env): Promise<void> {
           ? `${postText}\n\n[リンク先の内容]\n${urlArticle.content}`
           : postText;
       article = { status: "ok" as const, content: combined };
+      articleFetchMethod =
+        urlArticle.status === "ok"
+          ? `${urlArticle.method}+post_text`
+          : "post_text";
       console.log(`  [article] combined post text with url content`);
     } else {
       article = urlArticle;
+      articleFetchMethod =
+        urlArticle.status === "ok" ? urlArticle.method : "fetch_failed";
     }
   } else if (postText) {
     article = { status: "ok" as const, content: postText };
+    articleFetchMethod = "post_text";
     console.log(`  [article] using post text (${postText.length} chars)`);
   } else {
     article = { status: "no_url" as const };
+    articleFetchMethod = "no_url";
   }
 
   const comments = flattenTopComments(algoliaItem.children ?? [], MAX_COMMENTS);
   console.log(`Got ${comments.length} comments`);
 
   console.log("Generating summary with Gemini...");
-  const summaryHtml = await generateSummary(
+  const { summaryHtml, inputTokens, outputTokens } = await generateSummary(
     env.GEMINI_API_KEY,
     itemId,
     title,
@@ -94,14 +127,24 @@ async function processItem(itemId: number, env: Env): Promise<void> {
     comments,
   );
 
+  const now = Temporal.Now.instant().epochMilliseconds;
   const feedItem: FeedItem = {
     id: itemId,
     title,
     articleUrl,
     hnUrl,
     summaryHtml,
-    createdAt: Temporal.Now.instant().epochMilliseconds,
+    createdAt: now,
+    updatedAt: now,
     model: MODEL,
+    hnPostedAt,
+    commentCount,
+    points,
+    commentsUsed: comments.length,
+    articleChars: article.status === "ok" ? article.content.length : null,
+    articleFetchMethod,
+    inputTokens,
+    outputTokens,
   };
 
   console.log("Writing to D1...");
