@@ -76,44 +76,24 @@ WHERE id = ?
 `;
 
 const PAGE_STYLE = `
-body{
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  max-width:800px;
-  margin:2rem auto;
-  padding:0 1rem;
-  line-height:1.6;
-  color:#333
-}
-a{color:#ff6600}
-h1{font-size:1.4rem}
-article{
-  padding:1.5rem 0;
-  &+article{border-top:1px solid #eee}
-  h2{font-size:1.1rem;margin-top:.5rem;color:#555;
-    a{color:inherit;text-decoration:none;
-      &:hover{color:#ff6600}}}
-  ul{padding-left:1.5rem}
-  li{margin-bottom:.5rem}
-}
-.meta{font-size:.85rem;color:#666}
-.meta-grid{
-  display:grid;
-  grid-template-columns:auto 1fr;
-  gap:.15rem .75rem;
-  font-size:.85rem;
-  color:#666;
-  margin-top:1.5rem;
-  dt{font-weight:600;white-space:nowrap}
-  dd{margin:0}
-}
-.pagination{
-  display:flex;
-  justify-content:space-between;
-  padding-top:1rem;
-  border-top:1px solid #eee;
-  a{text-decoration:none;&:hover{text-decoration:underline}}
-  .disabled{color:#ccc}
-}
+body{max-width:720px;margin:0 auto;padding:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;color:#222;background:#fafafa}
+h1{font-size:1.5em;margin:.67em 0}
+h2{font-size:1.2em;margin:.5em 0}
+h3{font-size:1.05em;margin:.5em 0}
+a{color:#1a73e8;text-decoration:none}
+a:hover{text-decoration:underline}
+article{padding:1em 0;border-bottom:1px solid #e0e0e0}
+article:last-child{border:none}
+.meta{color:#666;font-size:.85em;margin:0 0 .25em}
+.pagination{display:flex;justify-content:space-between;margin:2em 0}
+.pagination .disabled{color:#999}
+.meta-grid{display:grid;grid-template-columns:auto 1fr;gap:.25em 1em;font-size:.85em;color:#555;margin:1.5em 0}
+.meta-grid dt{color:#888}
+.meta-grid dd{margin:0}
+table{border-collapse:collapse;width:100%;margin:1em 0}
+td,th{border:1px solid #ddd;padding:6px 10px;text-align:left}
+th{background:#f0f0f0}
+ul,ol{padding-left:1.5em}
 `;
 
 export default {
@@ -317,6 +297,7 @@ function renderItemPage(item: FeedItem): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${esc(item.title)}</title>
+  <meta name="description" content="Hacker News のトレンド記事を日本語で要約">
   <style>${PAGE_STYLE}</style>
 </head>
 <body>
