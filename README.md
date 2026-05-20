@@ -25,6 +25,10 @@ CF Queues (hn-processor)
 feed-worker (fetch handler)
   ├─ GET /feed.xml    → RSS (Inoreader で購読)
   └─ GET /items/{id} → 要約 HTML ページ
+
+admin-worker (fetch handler, Cloudflare Access で保護)
+  ├─ GET /         → 管理機能インデックス
+  └─ GET / POST /enqueue → 投稿を手動でキューに追加
 ```
 
 ## ディレクトリ構成
@@ -33,13 +37,14 @@ feed-worker (fetch handler)
 shared/      共通型定義・HN API クライアント・フィルタ
 backend/     scheduled (poller) + queue (processor) を担う Worker
 feed/        RSS 配信・要約 HTML ページ配信 Worker
+admin/       手動キュー投入 UI Worker（Cloudflare Access で保護）
 migrations/  D1 共通マイグレーション
 scripts/     GitHub Secrets 同期スクリプト
 ```
 
 ## 環境変数
 
-### feed-worker
+### feed-worker / admin-worker
 
 バインディングのみ。シークレット不要。
 
@@ -106,14 +111,19 @@ wrangler secret put GEMINI_API_KEY
 wrangler secret put JINA_API_KEY
 ```
 
-### 6. デプロイ
+### 6. Cloudflare Access の設定（admin-worker）
+
+Cloudflare Zero Trust ダッシュボードで admin-worker の URL に対して Access Application を作成し、許可するメールアドレスを設定する。これにより admin-worker はアプリケーションコードに認証ロジックを持たずに保護される。
+
+### 7. デプロイ
 
 ```bash
 npm -w feed run deploy
 npm -w backend run deploy
+npm -w admin run deploy
 ```
 
-### 7. Inoreader で RSS 購読
+### 8. Inoreader で RSS 購読
 
 `https://hn-feed.<your-subdomain>.workers.dev/feed.xml` を Inoreader に登録。
 
@@ -125,6 +135,9 @@ npm -w feed run dev
 
 # backend-worker (scheduled を手動発火)
 npm -w backend run dev:scheduled
+
+# admin-worker
+npm -w admin run dev
 ```
 
 `wrangler tail -e production` でリアルタイムログ確認。

@@ -1,14 +1,7 @@
 "$schema" = "./node_modules/wrangler/config-schema.json"
-name = "hn-feed-backend"
+name = "hn-feed-admin"
 main = "index.ts"
 compatibility_date = "2026-05-18"
-workers_dev = false
-
-[triggers]
-crons = ["22,52 * * * *"]
-
-[secrets]
-required = ["GEMINI_API_KEY", "JINA_API_KEY"]
 
 [[d1_databases]]
 binding = "DB"
@@ -19,12 +12,6 @@ migrations_dir = "../migrations"
 [[queues.producers]]
 binding = "QUEUE"
 queue = "hn-processor"
-
-[[queues.consumers]]
-queue = "hn-processor"
-max_batch_size = 5
-max_batch_timeout = 30
-max_retries = 3
 
 [observability.logs]
 enabled = true

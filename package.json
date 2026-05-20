@@ -5,6 +5,7 @@
   "workspaces": [
     "feed",
     "backend",
+    "admin",
     "shared"
   ],
   "scripts": {
@@ -14,9 +15,10 @@
     "fmt:prettier:check": "prettier --check .",
     "fmt:sql": "node scripts/fmt-sql.ts migrations/*.sql",
     "fmt:sql:check": "node scripts/fmt-sql.ts --check migrations/*.sql",
-    "ts:check": "npm run ts:check:feed && npm run ts:check:backend && npm run ts:check:shared && npm run ts:check:scripts",
+    "ts:check": "npm run ts:check:feed && npm run ts:check:backend && npm run ts:check:admin && npm run ts:check:shared && npm run ts:check:scripts",
     "ts:check:feed": "npm run ts:check -w feed",
     "ts:check:backend": "npm run ts:check -w backend",
+    "ts:check:admin": "npm run ts:check -w admin",
     "ts:check:shared": "npm run ts:check -w shared",
     "ts:check:scripts": "tsc -p scripts/tsconfig.json --noEmit",
     "lint": "eslint --fix",
