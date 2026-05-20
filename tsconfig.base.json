@@ -1,9 +1,11 @@
 {
   "compilerOptions": {
-    "lib": ["ES2022"],
-    "moduleResolution": "bundler",
+    "target": "es2025",
+    "lib": ["ES2025"],
     // node --test の実行に必要
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "dist-types"
   }
 }
