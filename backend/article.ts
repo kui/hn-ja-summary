@@ -1,8 +1,15 @@
 const MAX_CONTENT_LENGTH = 15_000;
 const MIN_CONTENT_LENGTH = 100;
 
-export type ArticleResult =
+// generateSummary に渡す型（method 不要）
+export type ArticleInput =
   | { status: "ok"; content: string }
+  | { status: "fetch_failed" }
+  | { status: "no_url" };
+
+// fetchArticleContent の戻り値（取得方法を含む）
+export type ArticleResult =
+  | { status: "ok"; content: string; method: "jina" | "raw" }
   | { status: "fetch_failed" }
   | { status: "no_url" };
 
@@ -69,7 +76,7 @@ export async function fetchArticleContent(
     const content = await fetchViaJina(url, jinaApiKey);
     if (content) {
       console.log(`  [article] fetched via Jina (${content.length} chars)`);
-      return { status: "ok", content };
+      return { status: "ok", content, method: "jina" };
     }
     console.log(
       "  [article] Jina returned no usable content, trying raw fetch",
@@ -84,7 +91,7 @@ export async function fetchArticleContent(
       console.log(
         `  [article] fetched via raw fetch (${content.length} chars)`,
       );
-      return { status: "ok", content };
+      return { status: "ok", content, method: "raw" };
     }
     console.log("  [article] raw fetch returned no usable content");
   } catch (err) {
