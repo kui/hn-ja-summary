@@ -1,5 +1,6 @@
 import { Temporal } from "temporal-polyfill";
-import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter";
+import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
+import { stripHtml } from "./html.ts";
 
 //
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
@@ -114,25 +115,71 @@ export async function fetchHNItemWithComments(
   return resp.json() as Promise<AlgoliaItem>;
 }
 
+const MIN_TEXT_LENGTH = 20;
+
+function makeSubtreeCounter() {
+  const cache = new Map<number, number>();
+  function count(comment: AlgoliaComment): number {
+    const cached = cache.get(comment.id);
+    if (cached !== undefined) return cached;
+    const result = 1 + comment.children.reduce((sum, c) => sum + count(c), 0);
+    cache.set(comment.id, result);
+    return result;
+  }
+  return count;
+}
+
 export function flattenTopComments(
   comments: AlgoliaComment[],
   max: number,
 ): string[] {
-  const result: string[] = [];
-  const queue: AlgoliaComment[] = [...comments];
+  const countSubtree = makeSubtreeCounter();
+  const bySubtreeDesc = (a: AlgoliaComment, b: AlgoliaComment) =>
+    countSubtree(b) - countSubtree(a);
 
-  while (queue.length > 0 && result.length < max) {
-    const node = queue.shift()!;
-    if (node.text && node.author) {
-      const clean = node.text
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      result.push(`[${node.author}]: ${clean}`);
+  // Pass 1: greedy でどのノードを含めるか選定する
+  const selected = new Set<number>();
+  const pq: AlgoliaComment[] = [...comments];
+
+  while (pq.length > 0 && selected.size < max) {
+    pq.sort(bySubtreeDesc);
+    const node = pq.shift()!;
+
+    const hasChildren = node.children.length > 0;
+    if (hasChildren) {
+      // 枝
+      selected.add(node.id);
+    } else {
+      // 葉（返信のないコメント）は短ければ弾く
+      const clean = node.text ? stripHtml(node.text) : undefined;
+      if (clean && clean.length >= MIN_TEXT_LENGTH) {
+        selected.add(node.id);
+      }
     }
-    if (node.children?.length > 0) {
-      queue.push(...node.children);
+
+    for (const child of node.children ?? []) {
+      pq.push(child);
     }
+  }
+
+  // Pass 2: 元のツリー構造を DFS して選定ノードを正しい深さで出力する
+  const result: string[] = [];
+
+  function visit(node: AlgoliaComment, depth: number): void {
+    if (selected.has(node.id)) {
+      const clean = node.text ? stripHtml(node.text) : undefined;
+      result.push(
+        `${"  ".repeat(depth)}[${node.author ?? "-"}]: ${clean ?? "-"}`,
+      );
+    }
+
+    for (const child of [...(node.children ?? [])].sort(bySubtreeDesc)) {
+      visit(child, depth + 1);
+    }
+  }
+
+  for (const comment of [...comments].sort(bySubtreeDesc)) {
+    visit(comment, 0);
   }
 
   return result;

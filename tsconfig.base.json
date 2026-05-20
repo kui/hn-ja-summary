@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
-    "lib": ["ES2022", "ESNext.Temporal"],
+    "lib": ["ES2022"],
     "moduleResolution": "bundler",
+    // node --test の実行に必要
+    "allowImportingTsExtensions": true,
     "noEmit": true
   }
 }
