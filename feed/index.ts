@@ -321,6 +321,13 @@ function renderItemPage(item: FeedItem): string {
 <body>
   <p class="meta"><a href="/">← 一覧へ</a></p>
   <h1>${esc(item.title)}</h1>
+  <div class="meta">
+    HN投稿日時: ${fmtDate(item.hnPostedAt)} ｜
+    処理日時: ${fmtDate(item.createdAt)} ｜
+    <a href="${item.articleUrl}" target="_blank" rel="noopener">元記事</a> ｜
+    <a href="${item.hnUrl}" target="_blank" rel="noopener">HNディスカッション</a>
+  </div>
+  ${item.summaryHtml}
   <dl class="meta-grid">
     <dt>元記事</dt><dd><a href="${item.articleUrl}" target="_blank" rel="noopener">${esc(item.articleUrl)}</a></dd>
     <dt>HNディスカッション</dt><dd><a href="${item.hnUrl}" target="_blank" rel="noopener">${esc(item.hnUrl)}</a></dd>
@@ -336,7 +343,6 @@ function renderItemPage(item: FeedItem): string {
     <dt>処理日時</dt><dd>${fmtDate(item.createdAt)}</dd>
     <dt>更新日時</dt><dd>${fmtDate(item.updatedAt)}</dd>
   </dl>
-  ${item.summaryHtml}
 </body>
 </html>`;
 }
