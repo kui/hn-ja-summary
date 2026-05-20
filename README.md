@@ -3,7 +3,8 @@
 HN トレンド記事を自動検出し、元記事とコメントを Gemini で日本語要約して RSS
 配信するシステム。
 
-- <https://hn-summary.k-ui.jp>
+- フィード配信 <https://hn-summary.k-ui.jp>
+- 管理 UI <https://hn-feed-admin.k-ui.workers.dev>
 
 ## アーキテクチャ
 
