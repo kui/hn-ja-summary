@@ -65,13 +65,19 @@ GitHub Secrets への反映:
 bash scripts/sync-github-env.sh
 ```
 
-### 1. 依存パッケージインストール
+### 1. git フック有効化
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### 2. 依存パッケージインストール
 
 ```bash
 npm install
 ```
 
-### 2. Cloudflare D1 データベース作成（初回のみ）
+### 3. Cloudflare D1 データベース作成（初回のみ）
 
 ```bash
 cd feed
@@ -85,14 +91,14 @@ npx wrangler d1 create hn-feed
 npx wrangler d1 migrations apply hn-feed --remote
 ```
 
-### 3. CF Queue 作成（初回のみ）
+### 4. CF Queue 作成（初回のみ）
 
 ```bash
 cd backend
 npx wrangler queues create hn-processor
 ```
 
-### 4. シークレット投入（backend-worker）
+### 5. シークレット投入（backend-worker）
 
 ```bash
 cd backend
@@ -100,14 +106,14 @@ wrangler secret put GEMINI_API_KEY
 wrangler secret put JINA_API_KEY
 ```
 
-### 5. デプロイ
+### 6. デプロイ
 
 ```bash
 npm -w feed run deploy
 npm -w backend run deploy
 ```
 
-### 6. Inoreader で RSS 購読
+### 7. Inoreader で RSS 購読
 
 `https://hn-feed.<your-subdomain>.workers.dev/feed.xml` を Inoreader に登録。
 

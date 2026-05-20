@@ -5,25 +5,6 @@
 Node.js + npm workspaces で管理されている。ルートで `npm install` を実行すると
 `feed/`, `backend/`, `shared/` のパッケージが一括インストールされる。
 
-## コミット前チェック
-
-コードを変更したら、コミットする前に必ず以下をすべてパスさせること。
-**フォーマット自動修正を先に実行してからチェックすること。**
-
-```bash
-# フォーマット自動修正（必須）
-npm run fmt
-
-# 型チェック・lint・フォーマットチェック
-npm run fmt:check
-npm run check
-npm run lint
-```
-
-- `fmt` / `fmt:check`: Markdown・SQL・全ワークスペースの src をまとめて処理
-- `check`: 全ワークスペースの `tsc --noEmit`
-- `lint`: 全ワークスペースの ESLint
-
 個別ワークスペースのみ確認したい場合は `tsc -p feed/tsconfig.json --noEmit` などをルートから実行する。
 
 ## 依存ソフトウェアのバージョン選定
@@ -37,18 +18,20 @@ npm run lint
 
 コードや設定に変更を加えた際は、README.md の内容も更新が必要でないか必ず確認すること。
 
-## フック有効化
-
-リポジトリ初期化後に一度だけ実行:
-
-```bash
-git config core.hooksPath .githooks
-```
-
 ## GitHub Actions ワークフローのトリガー
 
 ワークフローを動かすためだけの空コミット（`git commit --allow-empty`）は行わないこと。
 再デプロイが必要な場合は `wrangler deploy` コマンドで直接実行すること。
+
+## eslint-disable コメント
+
+`eslint-disable` / `eslint-disable-next-line` を使う際は、必ず直前の行に **なぜ無効化するのか** を説明するコメントを書くこと。
+
+```ts
+// RFC 822 形式は Temporal に相当するAPIがないため Date を例外使用
+// eslint-disable-next-line no-restricted-globals, no-restricted-syntax
+return new Date(epochMs).toUTCString();
+```
 
 ## スキル実行後の自己改善
 
