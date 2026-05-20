@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
+    "moduleResolution": "bundler",
     "types": ["@cloudflare/workers-types"]
   },
   "exclude": ["./**/*.test.ts"]

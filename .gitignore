@@ -3,3 +3,6 @@ node_modules
 !/.env.example
 worker-configuration.d.ts
 .wrangler
+*.tsbuildinfo
+.tsbuild/
+dist-types/
