@@ -7,14 +7,16 @@ STAGED=$(git diff --cached --name-only)
 
 FEED=false
 BACKEND=false
+ADMIN=false
 SCRIPTS=false
 
 for f in $STAGED; do
   case "$f" in
     feed/*) FEED=true ;;
     backend/*) BACKEND=true ;;
+    admin/*) ADMIN=true ;;
     scripts/*) SCRIPTS=true ;;
-    shared/*) FEED=true; BACKEND=true ;;
+    shared/*) FEED=true; BACKEND=true; ADMIN=true ;;
     tsconfig*.json|package.json|eslint.config.*) FEED=true; BACKEND=true; SCRIPTS=true ;;
   esac
 done
@@ -24,6 +26,9 @@ if [ "$FEED" = true ]; then
 fi
 if [ "$BACKEND" = true ]; then
   npm run ts:check:backend
+fi
+if [ "$ADMIN" = true ]; then
+  npm run ts:check:admin
 fi
 if [ "$SCRIPTS" = true ]; then
   npm run ts:check:scripts
