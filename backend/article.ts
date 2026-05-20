@@ -13,13 +13,14 @@ export type ArticleResult =
   | { status: "fetch_failed" }
   | { status: "no_url" };
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+import { stripHtml } from "@hn-feed/shared/html";
+
+function stripHtmlWithInlineScripts(html: string): string {
+  return stripHtml(
+    html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ""),
+  );
 }
 
 async function fetchViaJina(
@@ -62,7 +63,7 @@ async function fetchRaw(url: string): Promise<string | null> {
   ) {
     return null;
   }
-  const text = stripHtml(await resp.text());
+  const text = stripHtmlWithInlineScripts(await resp.text());
   return text.length >= MIN_CONTENT_LENGTH
     ? text.slice(0, MAX_CONTENT_LENGTH)
     : null;

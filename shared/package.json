@@ -2,7 +2,11 @@
   "name": "@hn-feed/shared",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "exports": {
     "./*": "./*.ts"
+  },
+  "scripts": {
+    "ts:check": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit"
   }
 }

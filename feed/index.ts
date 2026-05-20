@@ -1,5 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import type { FeedItem } from "@hn-feed/shared/feed";
+import { escapeHtml, stripHtml } from "@hn-feed/shared/html";
 
 const MAX_FEED_ITEMS = 20;
 const GITHUB_REPO = "https://github.com/kui/hn-ja-summary";
@@ -180,9 +181,6 @@ function generateRSS(
   feedUrl: string,
   workersDomain: string,
 ): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
   const itemsXml = items
     .map((item) => {
       const itemPageUrl = `https://${workersDomain}/items/${item.id}`;
@@ -205,7 +203,7 @@ function generateRSS(
     <description>Hacker News のトレンド記事を日本語で要約</description>
     <language>ja</language>
     <lastBuildDate>${toRFC822(Temporal.Now.instant().epochMilliseconds)}</lastBuildDate>
-    <atom:link href="${esc(feedUrl)}" rel="self" type="application/rss+xml"/>
+    <atom:link href="${escapeHtml(feedUrl)}" rel="self" type="application/rss+xml"/>
 ${itemsXml}
   </channel>
 </rss>`;
@@ -230,7 +228,7 @@ function fmtVal<T>(v: T | null): string {
 
 function extractFirstH2(html: string): string {
   const m = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
-  return m ? m[1].replace(/<[^>]+>/g, "").trim() : "";
+  return m ? stripHtml(m[1]) : "";
 }
 
 function extractFirstP(html: string): string {
@@ -243,12 +241,11 @@ function renderIndexPage(
   prevUrl: string | null,
   nextUrl: string | null,
 ): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
   const itemsHtml = items
     .map((item) => {
-      const jaTitle = esc(extractFirstH2(item.summaryHtml) || item.title);
+      const jaTitle = escapeHtml(
+        extractFirstH2(item.summaryHtml) || item.title,
+      );
       const firstP = extractFirstP(item.summaryHtml);
       return `
   <article>
@@ -288,21 +285,18 @@ ${paginationHtml}
 }
 
 function renderItemPage(item: FeedItem): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${esc(item.title)}</title>
+  <title>${escapeHtml(item.title)}</title>
   <meta name="description" content="Hacker News のトレンド記事を日本語で要約">
   <style>${PAGE_STYLE}</style>
 </head>
 <body>
   <p><a href="/">← 一覧へ</a></p>
-  <h1>${esc(item.title)}</h1>
+  <h1>${escapeHtml(item.title)}</h1>
   <p class="meta">
     HN投稿日時: ${fmtDate(item.hnPostedAt)} ｜
     処理日時: ${fmtDate(item.createdAt)} ｜
@@ -313,8 +307,8 @@ function renderItemPage(item: FeedItem): string {
     ${item.summaryHtml}
   </article>
   <dl class="meta-grid">
-    <dt>元記事</dt><dd><a href="${item.articleUrl}" target="_blank" rel="noopener">${esc(item.articleUrl)}</a></dd>
-    <dt>HNディスカッション</dt><dd><a href="${item.hnUrl}" target="_blank" rel="noopener">${esc(item.hnUrl)}</a></dd>
+    <dt>元記事</dt><dd><a href="${item.articleUrl}" target="_blank" rel="noopener">${escapeHtml(item.articleUrl)}</a></dd>
+    <dt>HNディスカッション</dt><dd><a href="${item.hnUrl}" target="_blank" rel="noopener">${escapeHtml(item.hnUrl)}</a></dd>
     <dt>HN投稿日時</dt><dd>${fmtDate(item.hnPostedAt)}</dd>
     <dt>ポイント</dt><dd>${fmtVal(item.points)}</dd>
     <dt>コメント数</dt><dd>${fmtVal(item.commentCount)}</dd>
@@ -323,7 +317,7 @@ function renderItemPage(item: FeedItem): string {
     <dt>元記事文字数</dt><dd>${fmtVal(item.articleChars)}</dd>
     <dt>入力トークン数</dt><dd>${fmtVal(item.inputTokens)}</dd>
     <dt>出力トークン数</dt><dd>${fmtVal(item.outputTokens)}</dd>
-    <dt>モデル</dt><dd>${esc(item.model)}</dd>
+    <dt>モデル</dt><dd>${escapeHtml(item.model)}</dd>
     <dt>処理日時</dt><dd>${fmtDate(item.createdAt)}</dd>
     <dt>更新日時</dt><dd>${fmtDate(item.updatedAt)}</dd>
   </dl>
