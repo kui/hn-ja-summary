@@ -12,7 +12,7 @@ export async function scheduled(
   console.log(`Got ${items.length} candidate stories`);
 
   const candidates = items.filter(shouldProcess);
-  console.log(`${candidates.length} candidates after velocity filter`);
+  console.log(`${candidates.length} candidates after filter`);
 
   if (candidates.length === 0) {
     console.log("No candidates to process");

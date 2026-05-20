@@ -1,9 +1,9 @@
 import { Temporal } from "temporal-polyfill";
 import type { HNItem } from "./hn";
 
-export const VELOCITY_THRESHOLD = 40; // points per hour
-export const MIN_AGE_HOURS = 1.0;
-export const MIN_COMMENTS = 10;
+export const VELOCITY_THRESHOLD = 20; // points per hour
+export const MIN_AGE_HOURS = 2.0;
+export const MIN_COMMENTS = 40;
 
 /**
  * 時間当たり　{@link VELOCITY_THRESHOLD} ポイント獲得している記事を抽出
