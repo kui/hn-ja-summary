@@ -11,6 +11,22 @@ export default defineConfig(
         "error",
         { argsIgnorePattern: "^_" },
       ],
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "Date",
+          message:
+            "Use Temporal (temporal-polyfill) instead of Date. Exception: new Date(epochMs).toUTCString() for RFC 822 formatting.",
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "NewExpression[callee.name='Date']",
+          message:
+            "Use Temporal (temporal-polyfill) instead of new Date(). Exception: new Date(epochMs).toUTCString() for RFC 822 formatting.",
+        },
+      ],
     },
   },
 );

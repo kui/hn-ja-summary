@@ -232,13 +232,16 @@ ${itemsXml}
 }
 
 function toRFC822(epochMs: number): string {
+  // RFC 822 形式（RSS pubDate 用）は Temporal に相当するAPIがないため Date を例外使用
+  // eslint-disable-next-line no-restricted-globals, no-restricted-syntax
   return new Date(epochMs).toUTCString();
 }
 
 function fmtDate(ms: number | null): string {
-  return ms
-    ? new Date(ms).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
-    : "-";
+  if (!ms) return "-";
+  return Temporal.Instant.fromEpochMilliseconds(ms)
+    .toZonedDateTimeISO("Asia/Tokyo")
+    .toLocaleString("ja-JP");
 }
 
 function fmtVal<T>(v: T | null): string {
@@ -267,12 +270,9 @@ function renderIndexPage(
     .map((item) => {
       const jaTitle = esc(extractFirstH2(item.summaryHtml) || item.title);
       const firstP = extractFirstP(item.summaryHtml);
-      const date = Temporal.Instant.fromEpochMilliseconds(item.createdAt)
-        .toZonedDateTimeISO("Asia/Tokyo")
-        .toLocaleString("ja-JP");
       return `
   <article>
-    <p class="meta">${date}</p>
+    <p class="meta">${fmtDate(item.createdAt)}</p>
     <h2><a href="/items/${item.id}">${jaTitle}</a></h2>
     ${firstP ? `<p>${firstP}</p>` : ""}
   </article>`;

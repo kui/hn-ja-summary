@@ -69,7 +69,9 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   const title = algoliaItem.title ?? `HN Item ${itemId}`;
   const hnUrl = `https://news.ycombinator.com/item?id=${itemId}`;
   const articleUrl = algoliaItem.url ?? hnUrl;
-  const hnPostedAt = new Date(algoliaItem.created_at).getTime();
+  const hnPostedAt = Temporal.Instant.from(
+    algoliaItem.created_at,
+  ).epochMilliseconds;
   const commentCount = algoliaItem.num_comments ?? null;
   const points = algoliaItem.points;
 
