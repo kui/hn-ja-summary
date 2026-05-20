@@ -84,12 +84,36 @@ body{
   line-height:1.6;
   color:#333
 }
-h1{font-size:1.4rem;margin-bottom:.5rem}
-.meta{color:#666;font-size:.9rem;margin-bottom:1.5rem}
-.meta a{color:#ff6600}
-h2{font-size:1.1rem;margin-top:1.5rem;color:#555}
-ul{padding-left:1.5rem}
-li{margin-bottom:.5rem}
+a{color:#ff6600}
+h1{font-size:1.4rem}
+article{
+  padding:1.5rem 0;
+  &+article{border-top:1px solid #eee}
+  h2{font-size:1.1rem;margin-top:.5rem;color:#555;
+    a{color:inherit;text-decoration:none;
+      &:hover{color:#ff6600}}}
+  ul{padding-left:1.5rem}
+  li{margin-bottom:.5rem}
+}
+.meta{font-size:.85rem;color:#666}
+.meta-grid{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:.15rem .75rem;
+  font-size:.85rem;
+  color:#666;
+  margin-top:1.5rem;
+  dt{font-weight:600;white-space:nowrap}
+  dd{margin:0}
+}
+.pagination{
+  display:flex;
+  justify-content:space-between;
+  padding-top:1rem;
+  border-top:1px solid #eee;
+  a{text-decoration:none;&:hover{text-decoration:underline}}
+  .disabled{color:#ccc}
+}
 `;
 
 export default {
@@ -248,7 +272,7 @@ function renderIndexPage(
         .toLocaleString("ja-JP");
       return `
   <article>
-    <div class="meta">${date}</div>
+    <p class="meta">${date}</p>
     <h2><a href="/items/${item.id}">${jaTitle}</a></h2>
     ${firstP ? `<p>${firstP}</p>` : ""}
   </article>`;
@@ -272,28 +296,11 @@ function renderIndexPage(
   <title>HN Summary Feed</title>
   <meta name="description" content="Hacker News のトレンド記事を日本語で要約">
   <link rel="alternate" type="application/rss+xml" title="HN Summary Feed" href="/feed.xml">
-  <style>
-    ${PAGE_STYLE}
-    article{border-bottom:1px solid #eee;padding-bottom:1.5rem;margin-bottom:1.5rem}
-    article h2{margin-top:.25rem}
-    article h2 a{color:#333;text-decoration:none}
-    article h2 a:hover{color:#ff6600;text-decoration:underline}
-    article p{margin:.5rem 0 0;color:#444;font-size:.95rem}
-    .site-desc{color:#555;font-size:.95rem;margin-bottom:2rem}
-    .site-desc a{color:#ff6600}
-    .pagination{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1rem;border-top:1px solid #eee}
-    .pagination a{color:#ff6600;text-decoration:none}
-    .pagination a:hover{text-decoration:underline}
-    .pagination .disabled{color:#ccc}
-  </style>
+  <style>${PAGE_STYLE}</style>
 </head>
 <body>
   <h1>HN Summary Feed</h1>
-  <div class="site-desc">
-    Hacker News のトレンド記事を日本語で要約
-    <a href="/feed.xml">RSS</a> ｜
-    <a href="${GITHUB_REPO}" target="_blank" rel="noopener">GitHub</a>
-  </div>
+  <p>Hacker News のトレンド記事を日本語で要約 ｜ <a href="/feed.xml">RSS</a> ｜ <a href="${GITHUB_REPO}" target="_blank" rel="noopener">GitHub</a></p>
 ${itemsHtml}
 ${paginationHtml}
 </body>
@@ -310,24 +317,20 @@ function renderItemPage(item: FeedItem): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${esc(item.title)}</title>
-  <style>
-    ${PAGE_STYLE}
-    .meta-grid{display:grid;grid-template-columns:auto 1fr;gap:.15rem .75rem;font-size:.85rem;color:#666;margin-bottom:1.5rem}
-    .meta-grid dt{font-weight:600;white-space:nowrap}
-    .meta-grid dd{margin:0}
-    .meta-grid a{color:#ff6600}
-  </style>
+  <style>${PAGE_STYLE}</style>
 </head>
 <body>
-  <p class="meta"><a href="/">← 一覧へ</a></p>
+  <p><a href="/">← 一覧へ</a></p>
   <h1>${esc(item.title)}</h1>
-  <div class="meta">
+  <p class="meta">
     HN投稿日時: ${fmtDate(item.hnPostedAt)} ｜
     処理日時: ${fmtDate(item.createdAt)} ｜
     <a href="${item.articleUrl}" target="_blank" rel="noopener">元記事</a> ｜
     <a href="${item.hnUrl}" target="_blank" rel="noopener">HNディスカッション</a>
-  </div>
-  ${item.summaryHtml}
+  </p>
+  <article>
+    ${item.summaryHtml}
+  </article>
   <dl class="meta-grid">
     <dt>元記事</dt><dd><a href="${item.articleUrl}" target="_blank" rel="noopener">${esc(item.articleUrl)}</a></dd>
     <dt>HNディスカッション</dt><dd><a href="${item.hnUrl}" target="_blank" rel="noopener">${esc(item.hnUrl)}</a></dd>
