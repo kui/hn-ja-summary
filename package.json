@@ -14,14 +14,19 @@
     "fmt:prettier:check": "prettier --check .",
     "fmt:sql": "node scripts/fmt-sql.ts migrations/*.sql",
     "fmt:sql:check": "node scripts/fmt-sql.ts --check migrations/*.sql",
-    "ts:check": "npm run ts:check:feed && npm run ts:check:backend && npm run ts:check:scripts",
+    "ts:check": "npm run ts:check:feed && npm run ts:check:backend && npm run ts:check:shared && npm run ts:check:scripts",
     "ts:check:feed": "npm run ts:check -w feed",
     "ts:check:backend": "npm run ts:check -w backend",
+    "ts:check:shared": "npm run ts:check -w shared",
     "ts:check:scripts": "tsc -p scripts/tsconfig.json --noEmit",
     "lint": "eslint --fix",
-    "lint:check": "eslint"
+    "lint:check": "eslint",
+    "test": "node --test ./**/*.test.ts",
+    "fixAll": "npm run fmt && npm run lint",
+    "checkAll": "npm run fmt:check && npm run lint:check && npm run ts:check && npm test"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260520.1",
     "@types/node": "^25.9.0",
     "eslint": "^10.4.0",
     "prettier": "^3.8.3",

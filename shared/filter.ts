@@ -1,5 +1,5 @@
 import { Temporal } from "temporal-polyfill";
-import type { HNItem } from "./hn";
+import type { HNItem } from "./hn.ts";
 
 export const VELOCITY_THRESHOLD = 20; // points per hour
 export const MIN_AGE_HOURS = 2.0;
