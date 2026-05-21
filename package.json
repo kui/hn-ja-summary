@@ -29,13 +29,13 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260520.1",
-    "@types/node": "^25.9.0",
+    "@types/node": "^25.9.1",
     "eslint": "^10.4.0",
     "prettier": "^3.8.3",
     "sql-formatter": "^15.8.0",
     "temporal-polyfill": "^0.3.2",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.3",
-    "wrangler": "^4.92.0"
+    "typescript-eslint": "^8.59.4",
+    "wrangler": "^4.93.0"
   }
 }
