@@ -1,0 +1,57 @@
+graph TB
+    USER["ユーザー<br/>ブラウザ / RSSリーダー"]
+    ADMIN_USER["管理者<br/>ブラウザ"]
+
+    subgraph CF["Cloudflare"]
+        ADMIN["admin Worker<br/>手動エンキュー"]
+
+        CRON["Cron 毎時2回"]
+        subgraph Backend["backend Worker"]
+            POLLER["Poller"]
+            PROCESSOR["Processor<br/>Queue Consumer"]
+        end
+
+        subgraph Feed["feed Worker"]
+            FEED_HTML["HTML ページ<br/>/ , /items/:id"]
+            FEED_RSS["RSS フィード<br/>/feed.xml"]
+        end
+
+        QUEUE[("Queue<br/>hn-processor")]
+        DB[("D1 Database<br/>hn-feed")]
+    end
+
+    HN["Hacker News<br/>Algolia API"]
+    JINA["Jina Reader"]
+    GEMINI["Gemini API"]
+
+    USER -->|"閲覧"| FEED_HTML
+    USER -->|"購読"| FEED_RSS
+    ADMIN_USER -->|"操作"| ADMIN
+    CRON -->|起動| POLLER
+
+    FEED_HTML -->|"読み取り"| DB
+    FEED_RSS -->|"読み取り"| DB
+
+    ADMIN -->|"エンキュー"| QUEUE
+    ADMIN -->|"状態更新"| DB
+
+    POLLER -->|"未処理をエンキュー"| QUEUE
+    POLLER -->|"処理状態チェック"| DB
+
+    QUEUE --> PROCESSOR
+
+    POLLER -->|"候補記事を検索"| HN
+    PROCESSOR -->|"記事+コメント取得"| HN
+    PROCESSOR -->|"本文抽出"| JINA
+    PROCESSOR -->|"日本語要約生成"| GEMINI
+    PROCESSOR -->|"要約を保存"| DB
+
+    classDef ext fill:#e3f2fd,stroke:#1565c0
+    classDef worker fill:#fff3e0,stroke:#e65100
+    classDef storage fill:#f3e5f5,stroke:#7b1fa2
+    classDef user fill:#fce4ec,stroke:#c62828
+
+    class HN,JINA,GEMINI ext
+    class POLLER,PROCESSOR,FEED_HTML,FEED_RSS,ADMIN worker
+    class QUEUE,DB storage
+    class USER,ADMIN_USER,CRON user

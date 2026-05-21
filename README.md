@@ -8,6 +8,8 @@ HN トレンド記事を自動検出し、元記事とコメントを Gemini で
 
 ## アーキテクチャ
 
+詳しくは [architecture.mermaid](architecture.mermaid)
+
 ```
 Cron Trigger (15分ごと)
   └─→ backend-worker (scheduled)
@@ -28,8 +30,7 @@ feed-worker (fetch handler)
   └─ GET /items/{id} → 要約 HTML ページ
 
 admin-worker (fetch handler, Cloudflare Access で保護)
-  ├─ GET /         → 管理機能インデックス
-  └─ GET / POST /enqueue → 投稿を手動でキューに追加
+  └─ GET, POST /enqueue → 投稿を手動でキューに追加
 ```
 
 ## ディレクトリ構成
