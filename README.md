@@ -11,9 +11,9 @@ HN トレンド記事を自動検出し、元記事とコメントを Gemini で
 詳しくは [architecture.mermaid](architecture.mermaid)
 
 ```
-Cron Trigger (15分ごと)
+Cron Trigger
   └─→ backend-worker (scheduled)
-        ├─ Algolia HN API: 直近24時間・コメント10件以上のストーリーを取得
+        ├─ Algolia HN API: 最近のストーリーを取得
         ├─ velocity フィルタ
         ├─ D1: processed_items で重複チェック
         └─ CF Queue: 未処理を投入
