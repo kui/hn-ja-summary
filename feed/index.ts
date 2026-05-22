@@ -106,7 +106,7 @@ export default {
     if (path === "/feed.xml") return await handleFeed(env);
 
     const m = path.match(/^\/items\/(\d+)$/);
-    if (m) return await handleItem(env, m[1]);
+    if (m) return await handleItem(env, m[1], url);
 
     return new Response("Not found", { status: 404 });
   },
@@ -140,7 +140,7 @@ async function handleRoot(env: Env, url: URL): Promise<Response> {
       ? `/?cursor=${prevItems[prevItems.length - 1].createdAt}`
       : null;
 
-  return new Response(renderIndexPage(items, prevUrl, nextUrl), {
+  return new Response(renderIndexPage(items, prevUrl, nextUrl, url.href), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "public, max-age=600",
@@ -162,13 +162,13 @@ async function handleFeed(env: Env): Promise<Response> {
   });
 }
 
-async function handleItem(env: Env, id: string): Promise<Response> {
+async function handleItem(env: Env, id: string, url: URL): Promise<Response> {
   const item = await env.DB.prepare(ITEM_SQL)
     .bind(parseInt(id, 10))
     .first<FeedItem>();
 
   if (!item) return new Response("Item not found", { status: 404 });
-  return new Response(renderItemPage(item), {
+  return new Response(renderItemPage(item, url.href), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "public, max-age=3600",
@@ -240,6 +240,7 @@ function renderIndexPage(
   items: FeedItem[],
   prevUrl: string | null,
   nextUrl: string | null,
+  pageUrl: string,
 ): string {
   const itemsHtml = items
     .map((item) => {
@@ -272,6 +273,12 @@ function renderIndexPage(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HN Summary Feed</title>
   <meta name="description" content="Hacker News のトレンド記事を日本語で要約">
+  <meta property="og:title" content="HN Summary Feed">
+  <meta property="og:description" content="Hacker News のトレンド記事を日本語で要約">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${escapeHtml(pageUrl)}">
+  <meta property="og:site_name" content="HN Summary Feed">
+  <meta name="twitter:card" content="summary">
   <link rel="alternate" type="application/rss+xml" title="HN Summary Feed" href="/feed.xml">
   <style>${PAGE_STYLE}</style>
 </head>
@@ -284,14 +291,29 @@ ${paginationHtml}
 </html>`;
 }
 
-function renderItemPage(item: FeedItem): string {
+function renderItemPage(item: FeedItem, pageUrl: string): string {
+  const jaTitle = extractFirstH2(item.summaryHtml);
+  const displayTitle = jaTitle
+    ? `${escapeHtml(item.title)}（${escapeHtml(jaTitle)}）`
+    : escapeHtml(item.title);
+  const firstP = extractFirstP(item.summaryHtml);
+  const ogDesc = firstP
+    ? escapeHtml(stripHtml(firstP))
+    : "Hacker News のトレンド記事を日本語で要約";
+
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(item.title)}</title>
-  <meta name="description" content="Hacker News のトレンド記事を日本語で要約">
+  <title>${displayTitle}</title>
+  <meta name="description" content="${ogDesc}">
+  <meta property="og:title" content="${displayTitle}">
+  <meta property="og:description" content="${ogDesc}">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="${escapeHtml(pageUrl)}">
+  <meta property="og:site_name" content="HN Summary Feed">
+  <meta name="twitter:card" content="summary">
   <style>${PAGE_STYLE}</style>
 </head>
 <body>
