@@ -122,7 +122,7 @@ ${commentsText}
     throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }
 
-  const data = (await resp.json()) as GeminiResponse;
+  const data = await resp.json<GeminiResponse>();
   return {
     summaryHtml: (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim(),
     inputTokens: data.usageMetadata?.promptTokenCount ?? 0,

@@ -126,7 +126,7 @@ async function handleRoot(env: Env, url: URL): Promise<Response> {
       ? env.DB.prepare(PREV_CURSOR_SQL)
           .bind(cursor, MAX_FEED_ITEMS)
           .all<{ createdAt: number }>()
-      : Promise.resolve({ results: [] as { createdAt: number }[] }),
+      : Promise.resolve<{ results: { createdAt: number }[] }>({ results: [] }),
   ]);
 
   const raw = pageResult.results;

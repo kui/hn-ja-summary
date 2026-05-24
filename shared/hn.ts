@@ -100,9 +100,7 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
     CANDIDATE_PAGES.map((page) =>
       fetch(
         `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&page=${page}`,
-      ).then((r) =>
-        r.ok ? (r.json() as Promise<AlgoliaSearchResponse>) : null,
-      ),
+      ).then((r) => (r.ok ? r.json<AlgoliaSearchResponse>() : null)),
     ),
   );
 
@@ -125,7 +123,7 @@ export async function fetchHNItemWithComments(
 ): Promise<AlgoliaItem | null> {
   const resp = await fetch(`${ALGOLIA_API}/items/${itemId}`);
   if (!resp.ok) return null;
-  return resp.json() as Promise<AlgoliaItem>;
+  return resp.json<AlgoliaItem>();
 }
 
 const MIN_TEXT_LENGTH = 20;

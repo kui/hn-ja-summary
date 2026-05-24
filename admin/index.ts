@@ -82,7 +82,12 @@ function renderEnqueuePage(resultHtml: string, defaultValue = ""): Response {
 
 async function handleEnqueue(request: Request, env: Env): Promise<Response> {
   const formData = await request.formData();
-  const input = (formData.get("id") as string | null) ?? "";
+  const input = formData.get("id") ?? "";
+  if (typeof input !== "string") {
+    return renderEnqueuePage(
+      `<div class="result error">ID を入力してください。</div>`,
+    );
+  }
 
   if (!input.trim()) {
     return renderEnqueuePage(

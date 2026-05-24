@@ -93,7 +93,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
         urlArticle.status === "ok"
           ? `${postText}\n\n[リンク先の内容]\n${urlArticle.content}`
           : postText;
-      article = { status: "ok" as const, content: combined };
+      article = { status: "ok", content: combined };
       articleFetchMethod =
         urlArticle.status === "ok"
           ? `${urlArticle.method}+post_text`
@@ -105,11 +105,11 @@ async function processItem(itemId: number, env: Env): Promise<void> {
         urlArticle.status === "ok" ? urlArticle.method : "fetch_failed";
     }
   } else if (postText) {
-    article = { status: "ok" as const, content: postText };
+    article = { status: "ok", content: postText };
     articleFetchMethod = "post_text";
     console.log(`  [article] using post text (${postText.length} chars)`);
   } else {
-    article = { status: "no_url" as const };
+    article = { status: "no_url" };
     articleFetchMethod = "no_url";
   }
 
