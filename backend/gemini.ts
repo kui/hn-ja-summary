@@ -72,11 +72,11 @@ ${commentsText}
 以下のHTML形式のみで出力する。マークダウンのコードブロック不要。{{}}でくくくったところは命令でありプレースホルダ。適宜HTMLエスケープをすることを忘れないこと。
 \`\`\`html
 <h2>{{記事タイトル（日本語）}}</h2>
-<ul><li><strong>元記事URL</strong>: <a href="${articleUrl}">${articleUrl}</a></li></ul>
+<ul><li><a href="${articleUrl}">${articleUrl}</a></li></ul>
 <p>{{記事の内容・背景・意義を3〜5文で簡潔に説明。必要に応じてtable要素やol,ul要素など構造化などを用いる。}}</p>
 
 <h2>HNコミュニティの反応</h2>
-<ul><li><strong>HN URL</strong>: <a href="${hnUrl}">${hnUrl}</a></li></ul>
+<ul><li><a href="${hnUrl}">${hnUrl}</a></li></ul>
 <p>{{HNコメントの総括}}</p>
 
 {{以下では主要な観点・議論の軸をまとめてその数だけ繰り返す、返信の多いリンク付きコメントのリンクは必ず取り上げる}}
