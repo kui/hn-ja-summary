@@ -59,14 +59,18 @@ ${title}
 ${articleUrl}
 
 ## 元記事内容
+<blockquote>
 ${articleContentForPrompt(article)}
+</blockquote>
 
 ## HNコメント（上位${comments.length}件）
+<blockquote>
 ${commentsText}
+</blockquote>
 
 ## 出力指示
 以下のHTML形式のみで出力する。マークダウンのコードブロック不要。{{}}でくくくったところは命令でありプレースホルダ。適宜HTMLエスケープをすることを忘れないこと。
-
+\`\`\`html
 <h2>{{記事タイトル（日本語）}}</h2>
 <ul><li><strong>元記事URL</strong>: <a href="${articleUrl}">${articleUrl}</a></li></ul>
 <p>{{記事の内容・背景・意義を3〜5文で簡潔に説明。必要に応じてtable要素やol,ul要素など構造化などを用いる。}}</p>
@@ -94,7 +98,7 @@ ${commentsText}
 </ul>
 
 {{「主要な観点・議論の軸」の数だけ繰り返す}}
-`;
+\`\`\``;
 
   const resp = await fetch(
     `${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`,
