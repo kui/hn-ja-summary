@@ -180,9 +180,8 @@ export function flattenTopComments(
 
   function visit(node: AlgoliaComment, depth: number): void {
     if (selected.has(node.id)) {
-      const clean = node.text ? stripHtml(node.text) : undefined;
       result.push(
-        `${"  ".repeat(depth)}[${node.author ?? "-"}]: ${clean ?? "-"}`,
+        `${"  ".repeat(depth)}[${node.author ?? "-"}]: ${node.text ?? "-"}`,
       );
     }
 
