@@ -5,12 +5,14 @@ const MIN_CONTENT_LENGTH = 100;
 export type ArticleInput =
   | { status: "ok"; content: string }
   | { status: "fetch_failed" }
+  | { status: "fetch_skipped" }
   | { status: "no_url" };
 
 // fetchArticleContent の戻り値（取得方法を含む）
 export type ArticleResult =
   | { status: "ok"; content: string; method: "jina" | "raw" }
   | { status: "fetch_failed" }
+  | { status: "fetch_skipped" }
   | { status: "no_url" };
 
 import { stripHtml } from "@hn-feed/shared/html";
@@ -69,10 +71,30 @@ async function fetchRaw(url: string): Promise<string | null> {
     : null;
 }
 
+// Paywall などでまともなコンテンツが取れないのにトークン消費だけするものは弾く
+const SKIPPED_HOSTS = [
+  "www.bloomberg.com",
+  "bloomberg.com",
+  "www.nytimes.com",
+  "nytimes.com",
+];
+
 export async function fetchArticleContent(
   url: string,
   jinaApiKey?: string,
 ): Promise<ArticleResult> {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch (err) {
+    console.error(`  [article] invalid url: ${url}`, err);
+    return { status: "fetch_failed" };
+  }
+  if (SKIPPED_HOSTS.includes(host)) {
+    console.log(`  [article] skipping ${host} (known paywall)`);
+    return { status: "fetch_skipped" };
+  }
+
   try {
     const content = await fetchViaJina(url, jinaApiKey);
     if (content) {

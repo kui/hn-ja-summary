@@ -32,6 +32,9 @@ function articleContentForPrompt(article: ArticleInput): string {
   if (article.status === "no_url") {
     return "（この記事にはURLがなく本文は存在しません。HNコメントのみを基に要約してください。）";
   }
+  if (article.status === "fetch_skipped") {
+    return "（このサイトはアクセス制限が厳しいため本文の取得をスキップしています。HNコメントを中心に要約してください。）";
+  }
   if (article.status === "fetch_failed") {
     return "（本文の取得に失敗しました。JavaScriptレンダリングやCloudflare等のアクセス制限が原因と考えられます。HNコメントを中心に要約してください。）";
   }
@@ -71,9 +74,9 @@ ${commentsText}
 ## 出力指示
 以下のHTML形式のみで出力する。マークダウンのコードブロック不要。{{}}でくくくったところは命令でありプレースホルダ。適宜HTMLエスケープをすることを忘れないこと。
 \`\`\`html
-<h2>{{記事タイトル（日本語）}}</h2>
+<h2>{{元記事の日本語訳タイトル}}</h2>
 <ul><li><a href="${articleUrl}">${articleUrl}</a></li></ul>
-<p>{{記事の内容・背景・意義を3〜5文で簡潔に説明。必要に応じてtable要素やol,ul要素など構造化などを用いる。}}</p>
+<p>{{記事の内容・背景・意義を3〜5文で簡潔に説明。必要に応じてtable要素やol,ul要素など構造化などを用いる。HNコメントからの補完や内容の混合は必ず避る。取得失敗、取得スキップ、内容が不十分の時にはその旨のみを記載。}}</p>
 
 <h2>HNコミュニティの反応</h2>
 <ul><li><a href="${hnUrl}">${hnUrl}</a></li></ul>

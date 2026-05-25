@@ -94,15 +94,18 @@ async function processItem(itemId: number, env: Env): Promise<void> {
           ? `${postText}\n\n[リンク先の内容]\n${urlArticle.content}`
           : postText;
       article = { status: "ok", content: combined };
-      articleFetchMethod =
-        urlArticle.status === "ok"
-          ? `${urlArticle.method}+post_text`
-          : "post_text";
+      if (urlArticle.status === "ok") {
+        articleFetchMethod = `${urlArticle.method}+post_text`;
+      } else if (urlArticle.status === "fetch_skipped") {
+        articleFetchMethod = "fetch_skipped+post_text";
+      } else {
+        articleFetchMethod = "post_text";
+      }
       console.log(`  [article] combined post text with url content`);
     } else {
       article = urlArticle;
       articleFetchMethod =
-        urlArticle.status === "ok" ? urlArticle.method : "fetch_failed";
+        urlArticle.status === "ok" ? urlArticle.method : urlArticle.status;
     }
   } else if (postText) {
     article = { status: "ok", content: postText };
