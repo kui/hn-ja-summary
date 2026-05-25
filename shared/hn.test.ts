@@ -144,14 +144,14 @@ describe("flattenTopComments", () => {
     assert.ok(result[0].startsWith("[-]:"), result[0]);
   });
 
-  it("HTML タグを除去してテキストをクリーニングする", () => {
+  it("HTML タグをそのまま含める", () => {
     const c = makeComment(
       1,
       "alice",
       "<p>hello <b>world</b></p> this is long enough",
     );
     const result = flattenTopComments([c], 10);
-    assert.ok(result[0].includes("hello world"), result[0]);
-    assert.ok(!result[0].includes("<p>"), result[0]);
+    assert.ok(result[0].includes("hello <b>world</b>"), result[0]);
+    assert.ok(result[0].includes("<p>"), result[0]);
   });
 });

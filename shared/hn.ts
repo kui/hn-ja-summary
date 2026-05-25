@@ -1,6 +1,5 @@
 import { Temporal } from "temporal-polyfill";
 import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
-import { stripHtml } from "./html.ts";
 
 // Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
@@ -162,8 +161,8 @@ export function flattenTopComments(
       selected.add(node.id);
     } else {
       // 葉（返信のないコメント）は短ければ弾く
-      const clean = node.text ? stripHtml(node.text) : undefined;
-      if (clean && clean.length >= MIN_TEXT_LENGTH) {
+      const text = node.text ?? undefined;
+      if (text && text.length >= MIN_TEXT_LENGTH) {
         selected.add(node.id);
       }
     }

@@ -3,7 +3,8 @@
   "compilerOptions": {
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "types": ["node"]
+    "types": ["node", "@cloudflare/workers-types"],
+    "skipLibCheck": true
   },
   "include": ["./**/*.ts"]
 }
