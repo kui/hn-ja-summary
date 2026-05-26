@@ -177,9 +177,7 @@ export function flattenTopComments(
 
   function visit(node: AlgoliaComment, depth: number): void {
     if (selected.has(node.id)) {
-      result.push(
-        `${"  ".repeat(depth)}[${node.author ?? "-"}]: ${node.text ?? "-"}`,
-      );
+      result.push(`${"  ".repeat(depth)}${node.text ?? "-"}`);
     }
 
     for (const child of [...(node.children ?? [])].sort(bySubtreeDesc)) {

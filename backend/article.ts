@@ -1,3 +1,5 @@
+import { stripHtml } from "@hn-feed/shared/html";
+
 const MAX_CONTENT_LENGTH = 15_000;
 const MIN_CONTENT_LENGTH = 100;
 
@@ -14,8 +16,6 @@ export type ArticleResult =
   | { status: "fetch_failed" }
   | { status: "fetch_skipped" }
   | { status: "no_url" };
-
-import { stripHtml } from "@hn-feed/shared/html";
 
 function stripHtmlWithInlineScripts(html: string): string {
   return stripHtml(
