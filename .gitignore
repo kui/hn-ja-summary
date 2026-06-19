@@ -6,3 +6,4 @@ worker-configuration.d.ts
 *.tsbuildinfo
 .tsbuild/
 dist-types/
+/.claude
