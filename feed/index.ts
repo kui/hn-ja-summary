@@ -163,12 +163,15 @@ async function handleFeed(env: Env): Promise<Response> {
 }
 
 async function handleItem(env: Env, id: string, url: URL): Promise<Response> {
+  if (!env.ADMIN_URL)
+    return new Response("Missing required env var: ADMIN_URL", { status: 500 });
+
   const item = await env.DB.prepare(ITEM_SQL)
     .bind(parseInt(id, 10))
     .first<FeedItem>();
 
   if (!item) return new Response("Item not found", { status: 404 });
-  return new Response(renderItemPage(item, url.href), {
+  return new Response(renderItemPage(item, url.href, env.ADMIN_URL), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "public, max-age=3600",
@@ -291,7 +294,11 @@ ${paginationHtml}
 </html>`;
 }
 
-function renderItemPage(item: FeedItem, pageUrl: string): string {
+function renderItemPage(
+  item: FeedItem,
+  pageUrl: string,
+  adminUrl: string,
+): string {
   const jaTitle = extractFirstH2(item.summaryHtml);
   const displayTitle = jaTitle
     ? `${escapeHtml(item.title)}（${escapeHtml(jaTitle)}）`
@@ -343,6 +350,7 @@ function renderItemPage(item: FeedItem, pageUrl: string): string {
     <dt>処理日時</dt><dd>${fmtDate(item.createdAt)}</dd>
     <dt>更新日時</dt><dd>${fmtDate(item.updatedAt)}</dd>
   </dl>
+  <p><a href="${escapeHtml(adminUrl)}/enqueue?id=${item.id}">再処理</a></p>
 </body>
 </html>`;
 }

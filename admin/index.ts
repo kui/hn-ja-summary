@@ -147,7 +147,7 @@ export default {
       return renderIndexPage();
 
     if (request.method === "GET" && url.pathname === "/enqueue")
-      return renderEnqueuePage("");
+      return renderEnqueuePage("", url.searchParams.get("id") ?? "");
 
     if (request.method === "POST" && url.pathname === "/enqueue")
       return handleEnqueue(request, env);
