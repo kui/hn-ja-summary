@@ -66,6 +66,7 @@ interface AlgoliaSearchHit {
 
 interface AlgoliaSearchResponse {
   hits: AlgoliaSearchHit[];
+  nbPages: number;
 }
 
 function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
@@ -85,29 +86,40 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 export async function fetchCandidateStories(): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
   const since = now - SEARCH_WINDOW_SECONDS;
-  const until = now - MIN_AGE_HOURS;
+  const until = now - MIN_AGE_HOURS * 3600;
 
+  // Algolia HN API only allows created_at_i in numericFilters; points/num_comments must be filtered client-side
   const numericFilters = encodeURIComponent(
-    [
-      `created_at_i>=${since}`,
-      `created_at_i<=${until}`,
-      `num_comments>=${MIN_COMMENTS}`,
-      `points>=${VELOCITY_THRESHOLD}`,
-    ].join(","),
+    [`created_at_i>=${since}`, `created_at_i<=${until}`].join(","),
   );
   const responses = await Promise.all(
     CANDIDATE_PAGES.map((page) =>
       fetch(
         `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&page=${page}`,
-      ).then((r) => (r.ok ? r.json<AlgoliaSearchResponse>() : null)),
+      ).then((r) => {
+        if (!r.ok) {
+          console.error(`Algolia search page ${page} failed: ${r.status}`);
+          return null;
+        }
+        return r.json<AlgoliaSearchResponse>();
+      }),
     ),
   );
+
+  const maxNbPages = Math.max(...responses.map((r) => r?.nbPages ?? 0));
+  if (maxNbPages > CANDIDATE_PAGES.length) {
+    console.warn(
+      `WARNING: Algolia returned ${maxNbPages} pages but only ${CANDIDATE_PAGES.length} were fetched. Some candidates may be missed.`,
+    );
+  }
 
   const seen = new Set<number>();
   const items: HNItem[] = [];
   for (const res of responses) {
     if (!res) continue;
     for (const hit of res.hits) {
+      if ((hit.points ?? 0) < VELOCITY_THRESHOLD) continue;
+      if ((hit.num_comments ?? 0) < MIN_COMMENTS) continue;
       const id = parseInt(hit.objectID, 10);
       if (seen.has(id)) continue;
       seen.add(id);
@@ -160,9 +172,8 @@ export function flattenTopComments(
       // 枝
       selected.add(node.id);
     } else {
-      // 葉（返信のないコメント）は短ければ弾く
-      const text = node.text ?? undefined;
-      if (text && text.length >= MIN_TEXT_LENGTH) {
+      // 葉（返信のないコメント）は短い・null なら弾く
+      if (node.text && node.text.length >= MIN_TEXT_LENGTH) {
         selected.add(node.id);
       }
     }
@@ -177,7 +188,8 @@ export function flattenTopComments(
 
   function visit(node: AlgoliaComment, depth: number): void {
     if (selected.has(node.id)) {
-      result.push(`${"  ".repeat(depth)}${node.text ?? "-"}`);
+      const author = node.author ?? "-";
+      result.push(`${"  ".repeat(depth)}[${author}]: ${node.text ?? "-"}`);
     }
 
     for (const child of [...(node.children ?? [])].sort(bySubtreeDesc)) {
