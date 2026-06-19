@@ -350,7 +350,7 @@ function renderItemPage(
     <dt>処理日時</dt><dd>${fmtDate(item.createdAt)}</dd>
     <dt>更新日時</dt><dd>${fmtDate(item.updatedAt)}</dd>
   </dl>
-  <p><a href="${escapeHtml(adminUrl)}/enqueue?id=${item.id}">再処理</a></p>
+  <p><a href="${escapeHtml(adminUrl)}/enqueue?id=${item.id}" target="_blank" rel="noopener">再処理</a></p>
 </body>
 </html>`;
 }
