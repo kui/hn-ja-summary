@@ -14,3 +14,4 @@ jobs:
       - run: npm run fmt:check
       - run: npm run ts:check
       - run: npm run lint:check
+      - run: npm test
