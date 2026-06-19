@@ -5,6 +5,7 @@ compatibility_date = "2026-05-18"
 
 [vars]
 WORKERS_DOMAIN = "hn-summary.k-ui.jp"
+ADMIN_URL = "https://hn-feed-admin.k-ui.workers.dev"
 
 [[d1_databases]]
 binding = "DB"
