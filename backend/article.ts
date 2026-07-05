@@ -3,6 +3,12 @@ import { stripHtml } from "@hn-feed/shared/html";
 const MAX_CONTENT_LENGTH = 15_000;
 const MIN_CONTENT_LENGTH = 100;
 
+function clampContent(text: string): string | null {
+  if (text.length < MIN_CONTENT_LENGTH) return null;
+  if (text.length <= MAX_CONTENT_LENGTH) return text;
+  return `${text.slice(0, MAX_CONTENT_LENGTH)}\n（本文はここで切り詰められている。以降の内容を推測で補完しないこと）`;
+}
+
 // generateSummary に渡す型（method 不要）
 export type ArticleInput =
   | { status: "ok"; content: string }
@@ -43,10 +49,7 @@ async function fetchViaJina(
   ) {
     return null;
   }
-  const text = (await resp.text()).trim();
-  return text.length >= MIN_CONTENT_LENGTH
-    ? text.slice(0, MAX_CONTENT_LENGTH)
-    : null;
+  return clampContent((await resp.text()).trim());
 }
 
 async function fetchRaw(url: string): Promise<string | null> {
@@ -65,10 +68,7 @@ async function fetchRaw(url: string): Promise<string | null> {
   ) {
     return null;
   }
-  const text = stripHtmlWithInlineScripts(await resp.text());
-  return text.length >= MIN_CONTENT_LENGTH
-    ? text.slice(0, MAX_CONTENT_LENGTH)
-    : null;
+  return clampContent(stripHtmlWithInlineScripts(await resp.text()));
 }
 
 // Paywall などでまともなコンテンツが取れないのにトークン消費だけするものは弾く
