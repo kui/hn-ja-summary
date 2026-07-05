@@ -28,6 +28,11 @@ export interface SummaryResult {
   outputTokens: number;
 }
 
+export function stripCodeFence(text: string): string {
+  const match = text.match(/^```[\w-]*[ \t]*\n([\s\S]*?)\n?```[ \t]*$/);
+  return match ? match[1].trim() : text;
+}
+
 function articleContentForPrompt(article: ArticleInput): string {
   if (article.status === "no_url") {
     return "（この記事にはURLがなく本文は存在しません。HNコメントのみを基に要約してください。）";
@@ -118,8 +123,19 @@ ${commentsText}
   }
 
   const data = await resp.json<GeminiResponse>();
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason !== "STOP") {
+    throw new Error(
+      `Gemini output incomplete or blocked: finishReason=${candidate?.finishReason ?? "no candidate"}`,
+    );
+  }
+  const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
+  const summaryHtml = stripCodeFence(text.trim());
+  if (summaryHtml === "") {
+    throw new Error("Gemini returned an empty summary");
+  }
   return {
-    summaryHtml: (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim(),
+    summaryHtml,
     inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
   };
