@@ -51,7 +51,7 @@ const RESPONSE_SCHEMA = {
           },
           bodyHtml: {
             type: "string",
-            description: `その軸の内容。<ul><li><strong>観点ラベル</strong>: 観点の説明</li></ul> のような箇条書きを基本とし、比較が有効な場合は<table>を使う。返信の多いコメントがリンクを含んでいるときは必ずそのリンクを含める。${HTML_FRAGMENT_RULES}`,
+            description: `その軸の内容。<ul><li><strong>観点ラベル</strong>: 観点の説明</li></ul> のような箇条書きを基本とする。<table>は複数の対象を同一の2つ以上の属性で比較でき、各列を属性・各行を対象とするマトリクスが成立する場合のみ使う。ラベルと説明の2列で表せる内容は必ず箇条書きにする。返信の多いコメントがリンクを含んでいるときは必ずそのリンクを含める。${HTML_FRAGMENT_RULES}`,
           },
         },
         required: ["heading", "bodyHtml"],
