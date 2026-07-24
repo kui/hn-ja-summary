@@ -1,5 +1,4 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, it, expect } from "vitest";
 import { flattenTopComments } from "./hn.ts";
 import type { AlgoliaComment } from "./hn.ts";
 
@@ -16,26 +15,26 @@ const LONG = "a".repeat(20); // MIN_TEXT_LENGTH を満たす最小文字列
 
 describe("flattenTopComments", () => {
   it("空配列を渡すと空配列を返す", () => {
-    assert.deepEqual(flattenTopComments([], 10), []);
+    expect(flattenTopComments([], 10)).toEqual([]);
   });
 
   it("max=0 のとき空配列を返す", () => {
     const c = makeComment(1, "alice", LONG);
-    assert.deepEqual(flattenTopComments([c], 0), []);
+    expect(flattenTopComments([c], 0)).toEqual([]);
   });
 
   it("単一コメントを [author]: text 形式で返す", () => {
     const c = makeComment(1, "alice", "hello world, this is a long comment");
     const result = flattenTopComments([c], 10);
-    assert.deepEqual(result, ["[alice]: hello world, this is a long comment"]);
+    expect(result).toEqual(["[alice]: hello world, this is a long comment"]);
   });
 
   it("子コメントは2スペースインデントで返す", () => {
     const child = makeComment(2, "bob", LONG);
     const parent = makeComment(1, "alice", LONG, [child]);
     const result = flattenTopComments([parent], 10);
-    assert.equal(result[0], `[alice]: ${LONG}`);
-    assert.equal(result[1], `  [bob]: ${LONG}`);
+    expect(result[0]).toBe(`[alice]: ${LONG}`);
+    expect(result[1]).toBe(`  [bob]: ${LONG}`);
   });
 
   it("孫コメントは4スペースインデントで返す", () => {
@@ -43,29 +42,29 @@ describe("flattenTopComments", () => {
     const child = makeComment(2, "bob", LONG, [grandchild]);
     const parent = makeComment(1, "alice", LONG, [child]);
     const result = flattenTopComments([parent], 10);
-    assert.equal(result[2], `    [carol]: ${LONG}`);
+    expect(result[2]).toBe(`    [carol]: ${LONG}`);
   });
 
   it("max 件数を超えない", () => {
     const children = [2, 3, 4].map((id) => makeComment(id, "u", LONG));
     const parent = makeComment(1, "alice", LONG, children);
     const result = flattenTopComments([parent], 2);
-    assert.equal(result.length, 2);
+    expect(result.length).toBe(2);
   });
 
   it("リーフコメントが MIN_TEXT_LENGTH 未満なら除外する", () => {
     const short = makeComment(1, "alice", "hi"); // 子なし・短い
     const long = makeComment(2, "bob", LONG);
     const result = flattenTopComments([short, long], 10);
-    assert.equal(result.length, 1);
-    assert.ok(result[0].startsWith("[bob]"));
+    expect(result.length).toBe(1);
+    expect(result[0].startsWith("[bob]")).toBe(true);
   });
 
   it("子ありの親は短くても除外しない", () => {
     const child = makeComment(2, "bob", LONG);
     const shortParent = makeComment(1, "alice", "hi", [child]); // 短いが子あり
     const result = flattenTopComments([shortParent], 10);
-    assert.ok(result.some((r) => r.includes("[alice]")));
+    expect(result.some((r) => r.includes("[alice]"))).toBe(true);
   });
 
   it("サブツリーが大きい順にトップレベルを選定する", () => {
@@ -77,7 +76,7 @@ describe("flattenTopComments", () => {
 
     const result = flattenTopComments([commentB, commentA], 10);
     // commentA が先に来る
-    assert.ok(result[0].startsWith("[alice]"));
+    expect(result[0].startsWith("[alice]")).toBe(true);
   });
 
   it("greedy 選定で異なる木をまたいで比較する", () => {
@@ -93,10 +92,10 @@ describe("flattenTopComments", () => {
 
     // max=3: commentA か commentB が先に来て、その子、次に相手のトップ
     const result = flattenTopComments([commentA, commentB], 3);
-    assert.equal(result.length, 3);
-    assert.ok(result[0].startsWith("[alice]"));
-    assert.ok(result[1].startsWith("  [a1]"));
-    assert.ok(result[2].startsWith("[bob"));
+    expect(result.length).toBe(3);
+    expect(result[0].startsWith("[alice]")).toBe(true);
+    expect(result[1].startsWith("  [a1]")).toBe(true);
+    expect(result[2].startsWith("[bob")).toBe(true);
   });
 
   it("木構造を維持する（greedy 選定でも返信が正しい親の下に来る）", () => {
@@ -113,9 +112,9 @@ describe("flattenTopComments", () => {
     ]); // subtree=8
 
     const result = flattenTopComments([commentA, commentB], 3);
-    assert.ok(result[0].startsWith("[alice]"));
-    assert.ok(result[1].startsWith("  [a1]"));
-    assert.ok(result[2].startsWith("[bob"));
+    expect(result[0].startsWith("[alice]")).toBe(true);
+    expect(result[1].startsWith("  [a1]")).toBe(true);
+    expect(result[2].startsWith("[bob")).toBe(true);
   });
 
   it("text が null のコメントを無視する", () => {
@@ -127,7 +126,7 @@ describe("flattenTopComments", () => {
       created_at: "",
       children: [],
     };
-    assert.deepEqual(flattenTopComments([nullText], 10), []);
+    expect(flattenTopComments([nullText], 10)).toEqual([]);
   });
 
   it("author が null のコメントは [-] として出力する", () => {
@@ -140,8 +139,8 @@ describe("flattenTopComments", () => {
       children: [],
     };
     const result = flattenTopComments([nullAuthor], 10);
-    assert.equal(result.length, 1);
-    assert.ok(result[0].startsWith("[-]:"), result[0]);
+    expect(result.length).toBe(1);
+    expect(result[0].startsWith("[-]:")).toBe(true);
   });
 
   it("HTML タグをそのまま含める", () => {
@@ -151,7 +150,7 @@ describe("flattenTopComments", () => {
       "<p>hello <b>world</b></p> this is long enough",
     );
     const result = flattenTopComments([c], 10);
-    assert.ok(result[0].includes("hello <b>world</b>"), result[0]);
-    assert.ok(result[0].includes("<p>"), result[0]);
+    expect(result[0].includes("hello <b>world</b>")).toBe(true);
+    expect(result[0].includes("<p>")).toBe(true);
   });
 });

@@ -2,5 +2,6 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "moduleResolution": "bundler"
-  }
+  },
+  "exclude": ["vitest.config.ts", "**/*.test.ts"]
 }

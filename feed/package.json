@@ -2,6 +2,7 @@
   "name": "hn-feed-worker",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "wrangler d1 migrations apply hn-feed --local && wrangler dev",
     "dev:remote": "wrangler dev --remote",
