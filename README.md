@@ -22,7 +22,8 @@ CF Queues (hn-processor)
   └─→ backend-worker (queue)
         ├─ Algolia HN API: コメントツリー取得
         ├─ Jina + raw fetch: 元記事取得
-        ├─ Gemini: 日本語要約生成
+        ├─ Gemini: 日本語要約を構造化出力 (JSON) で生成
+        ├─ 検証して HTML を組み立て（不正なら 1 回再生成）
         └─ D1: feed_items / processed_items 更新
 
 feed-worker (fetch handler)
@@ -36,7 +37,7 @@ admin-worker (fetch handler, Cloudflare Access で保護)
 ## ディレクトリ構成
 
 ```
-shared/      共通型定義・HN API クライアント・フィルタ
+shared/      共通型定義・HN API クライアント・フィルタ・要約 HTML の検証と組み立て
 backend/     scheduled (poller) + queue (processor) を担う Worker
 feed/        RSS 配信・要約 HTML ページ配信 Worker
 admin/       手動キュー投入 UI Worker（Cloudflare Access で保護）
