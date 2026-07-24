@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "es2025",
     "lib": ["ES2025"],
-    // node --test の実行に必要
+    // Node で .ts を直接実行する場合 (node scripts/*.ts 等) 相対 import に拡張子が要る
     "allowImportingTsExtensions": true,
     "composite": true,
     "emitDeclarationOnly": true,

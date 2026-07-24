@@ -4,5 +4,5 @@
     "moduleResolution": "bundler",
     "types": ["@cloudflare/workers-types"]
   },
-  "exclude": ["./**/*.test.ts"]
+  "exclude": ["./**/*.test.ts", "./vitest.config.ts"]
 }
