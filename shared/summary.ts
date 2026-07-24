@@ -44,9 +44,11 @@ interface OpenElement {
   closed: boolean;
 }
 
-// HTMLRewriter は不正なHTMLでも例外を投げず入力をそのまま素通しするため、
-// 出力ではなくハンドラの発火状況で判定する。未終端の属性値は後続要素を
-// 飲み込み、その要素の element イベント自体が発火しなくなる。
+// HTMLRewriter は不正なHTMLでも例外を投げず素通しするので、出力ではなくハンドラの
+// 発火で判定する。未終端属性は後続要素を飲み込みその element イベントが消えるため検知できる。
+// 閉じタグの交差 (<a><strong></a></strong>) は検知しない: パーサーが </a> で子 strong を暗黙に
+// 閉じ、余った </strong> を無視するため、交差した事実がイベント層に残らない。HTML5準拠ブラウザが
+// 同じ木に修復するので配信上は無害。厳密に弾くにはソースを走査する自前トークナイザが要る。
 export async function validateFragment(html: string): Promise<void> {
   const errors: string[] = [];
   const opened: OpenElement[] = [];
