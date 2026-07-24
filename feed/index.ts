@@ -229,13 +229,19 @@ function fmtVal<T>(v: T | null): string {
   return v !== null ? String(v) : "-";
 }
 
+// section 導入前に生成された要約は全体から先頭要素を拾う
+function articleSection(html: string): string {
+  const m = html.match(/<section id="article">([\s\S]*?)<\/section>/i);
+  return m ? m[1] : html;
+}
+
 function extractFirstH2(html: string): string {
-  const m = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+  const m = articleSection(html).match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
   return m ? stripHtml(m[1]) : "";
 }
 
 function extractFirstP(html: string): string {
-  const m = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+  const m = articleSection(html).match(/<p[^>]*>([\s\S]*?)<\/p>/i);
   return m ? m[1].trim() : "";
 }
 
