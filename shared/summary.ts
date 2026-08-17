@@ -5,12 +5,18 @@ export interface SummaryTopic {
   bodyHtml: string;
 }
 
-export interface SummaryDoc {
+// モデル出力そのもの。元記事本文が無いときは articleHtml をレスポンススキーマから
+// 外して生成させないため、そのケースに限り欠落する。
+export interface ParsedSummaryDoc {
   jaTitle: string;
-  // 元記事本文が無いときはモデルに生成させず、呼び出し側が固定の注記を入れる
   articleHtml?: string;
   hnOverviewHtml: string;
   topics: SummaryTopic[];
+}
+
+// レンダリング入力。欠落ケースは呼び出し側が固定の注記で埋めてからここへ渡す。
+export interface SummaryDoc extends ParsedSummaryDoc {
+  articleHtml: string;
 }
 
 export class SummaryFormatError extends Error {
@@ -87,7 +93,7 @@ export async function validateFragment(html: string): Promise<void> {
   }
 }
 
-export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
+export async function validateSummaryDoc(doc: ParsedSummaryDoc): Promise<void> {
   if (doc.articleHtml !== undefined) await validateFragment(doc.articleHtml);
   await validateFragment(doc.hnOverviewHtml);
   for (const topic of doc.topics) {
@@ -109,7 +115,7 @@ function asString(v: unknown, field: string): string {
   return v;
 }
 
-export function parseSummaryDoc(text: string): SummaryDoc {
+export function parseSummaryDoc(text: string): ParsedSummaryDoc {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -169,12 +175,11 @@ ${topic.bodyHtml.trim()}
 </section>`,
   );
 
-  const articleBody = doc.articleHtml?.trim();
-
   return [
     `<section id="article">
 <h2>${escapeHtml(doc.jaTitle)}</h2>
-${linkList(articleUrl)}${articleBody ? `\n${articleBody}` : ""}
+${linkList(articleUrl)}
+${doc.articleHtml.trim()}
 </section>`,
     `<section id="hn">
 <h2>HNコミュニティの反応</h2>

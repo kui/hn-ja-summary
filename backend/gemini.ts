@@ -178,16 +178,14 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
     try {
       const parsed = parseSummaryDoc(text.trim());
       await validateSummaryDoc(parsed);
-      if (article.status === "ok" && parsed.articleHtml === undefined) {
+      const articleHtml =
+        article.status === "ok"
+          ? parsed.articleHtml
+          : missingArticleNoticeHtml(article.status);
+      if (articleHtml === undefined) {
         throw new SummaryFormatError("articleHtml is missing");
       }
-      const doc =
-        article.status === "ok"
-          ? parsed
-          : {
-              ...parsed,
-              articleHtml: missingArticleNoticeHtml(article.status),
-            };
+      const doc = { ...parsed, articleHtml };
       return {
         summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
         inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
