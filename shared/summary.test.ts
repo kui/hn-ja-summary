@@ -47,6 +47,19 @@ describe("parseSummaryDoc", () => {
     ).toThrow(SummaryFormatError);
   });
 
+  it("articleHtml の欠落は許容する", () => {
+    const { articleHtml, ...withoutArticle } = makeDoc();
+    void articleHtml;
+    const doc = parseSummaryDoc(JSON.stringify(withoutArticle));
+    expect(doc.articleHtml).toBeUndefined();
+  });
+
+  it("空の articleHtml は拒否する", () => {
+    expect(() =>
+      parseSummaryDoc(JSON.stringify(makeDoc({ articleHtml: " " }))),
+    ).toThrow(SummaryFormatError);
+  });
+
   it("topics が配列でない場合を拒否する", () => {
     expect(() =>
       parseSummaryDoc(JSON.stringify({ ...makeDoc(), topics: "not array" })),
@@ -99,6 +112,15 @@ describe("renderSummaryHtml", () => {
     );
     expect(html).not.toContain("<script>");
     expect(html).toMatch(/<h3>a &amp; b<\/h3>/);
+  });
+
+  it("articleHtml が無い場合は article section をリンクだけで構成する", () => {
+    const { articleHtml, ...withoutArticle } = makeDoc();
+    void articleHtml;
+    const html = renderSummaryHtml(withoutArticle, ARTICLE_URL, HN_URL);
+    expect(html).toContain(
+      `<a href="${ARTICLE_URL}">${ARTICLE_URL}</a></li></ul>\n</section>`,
+    );
   });
 
   it("topics が空でも2つの section を返す", () => {

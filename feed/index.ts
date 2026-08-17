@@ -240,9 +240,23 @@ function extractFirstH2(html: string): string {
   return m ? stripHtml(m[1]) : "";
 }
 
+function hnSection(html: string): string {
+  const m = html.match(/<section id="hn">([\s\S]*?)<\/section>/i);
+  return m ? m[1] : "";
+}
+
+// class="notice" は本文を取得できなかった旨の定型文なので概要には使わない
+function firstContentP(section: string): string {
+  for (const m of section.matchAll(/<p([^>]*)>([\s\S]*?)<\/p>/gi)) {
+    if (/class="notice"/i.test(m[1])) continue;
+    const text = m[2].trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 function extractFirstP(html: string): string {
-  const m = articleSection(html).match(/<p[^>]*>([\s\S]*?)<\/p>/i);
-  return m ? m[1].trim() : "";
+  return firstContentP(articleSection(html)) || firstContentP(hnSection(html));
 }
 
 function renderIndexPage(

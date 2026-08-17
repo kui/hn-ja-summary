@@ -7,7 +7,8 @@ export interface SummaryTopic {
 
 export interface SummaryDoc {
   jaTitle: string;
-  articleHtml: string;
+  // 元記事本文が無いときはモデルに生成させず、呼び出し側が固定の注記を入れる
+  articleHtml?: string;
   hnOverviewHtml: string;
   topics: SummaryTopic[];
 }
@@ -87,7 +88,7 @@ export async function validateFragment(html: string): Promise<void> {
 }
 
 export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
-  await validateFragment(doc.articleHtml);
+  if (doc.articleHtml !== undefined) await validateFragment(doc.articleHtml);
   await validateFragment(doc.hnOverviewHtml);
   for (const topic of doc.topics) {
     await validateFragment(topic.bodyHtml);
@@ -124,10 +125,13 @@ export function parseSummaryDoc(text: string): SummaryDoc {
   }
   return {
     jaTitle: requireNonEmpty(asString(o.jaTitle, "jaTitle"), "jaTitle"),
-    articleHtml: requireNonEmpty(
-      asString(o.articleHtml, "articleHtml"),
-      "articleHtml",
-    ),
+    articleHtml:
+      o.articleHtml === undefined
+        ? undefined
+        : requireNonEmpty(
+            asString(o.articleHtml, "articleHtml"),
+            "articleHtml",
+          ),
     hnOverviewHtml: requireNonEmpty(
       asString(o.hnOverviewHtml, "hnOverviewHtml"),
       "hnOverviewHtml",
@@ -165,11 +169,12 @@ ${topic.bodyHtml.trim()}
 </section>`,
   );
 
+  const articleBody = doc.articleHtml?.trim();
+
   return [
     `<section id="article">
 <h2>${escapeHtml(doc.jaTitle)}</h2>
-${linkList(articleUrl)}
-${doc.articleHtml.trim()}
+${linkList(articleUrl)}${articleBody ? `\n${articleBody}` : ""}
 </section>`,
     `<section id="hn">
 <h2>HNコミュニティの反応</h2>

@@ -20,7 +20,12 @@ const HTML_FRAGMENT_RULES = [
 
 const PLAIN_TEXT_RULE = "プレーンテキストで書き、タグを含めない。";
 
-const RESPONSE_SCHEMA = {
+const ARTICLE_PROPERTY = {
+  type: "string",
+  description: `元記事の内容・背景・意義を3〜5文で簡潔に説明する。HNコメントからの補完は厳禁。HNコメントからの内容の混合は厳禁。内容が不十分の時にはその旨のみを記載。${HTML_FRAGMENT_RULES}`,
+};
+
+const SCHEMA_BASE = {
   type: "object",
   description:
     "Hacker Newsの投稿1件に対する日本語要約。元記事の要約とHNコメントの要約を分離して格納する。",
@@ -28,10 +33,6 @@ const RESPONSE_SCHEMA = {
     jaTitle: {
       type: "string",
       description: `元記事の日本語訳タイトル。${PLAIN_TEXT_RULE}`,
-    },
-    articleHtml: {
-      type: "string",
-      description: `元記事の内容・背景・意義を3〜5文で簡潔に説明する。HNコメントからの補完は厳禁。HNコメントからの内容の混合は厳禁。取得失敗、取得スキップ、内容が不十分の時にはその旨のみを記載。${HTML_FRAGMENT_RULES}`,
     },
     hnOverviewHtml: {
       type: "string",
@@ -58,8 +59,20 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["jaTitle", "articleHtml", "hnOverviewHtml", "topics"],
+  required: ["jaTitle", "hnOverviewHtml", "topics"],
 };
+
+// 本文が無いのに articleHtml を要求すると、モデルは分量を満たすためHNコメントから
+// 記事内容を捏造する。フィールドごと外して構造的に不可能にする。
+function responseSchema(hasArticle: boolean) {
+  if (!hasArticle) return SCHEMA_BASE;
+  const { jaTitle, ...rest } = SCHEMA_BASE.properties;
+  return {
+    ...SCHEMA_BASE,
+    properties: { jaTitle, articleHtml: ARTICLE_PROPERTY, ...rest },
+    required: ["jaTitle", "articleHtml", "hnOverviewHtml", "topics"],
+  };
+}
 
 export class GeminiQuotaError extends Error {
   constructor(message: string) {
@@ -86,17 +99,32 @@ export interface SummaryResult {
   outputTokens: number;
 }
 
+type MissingArticleStatus = Exclude<ArticleInput["status"], "ok">;
+
+const MISSING_ARTICLE_PROMPT: Record<MissingArticleStatus, string> = {
+  no_url: "（この投稿には元記事URLがなく、本文は存在しない。）",
+  fetch_skipped:
+    "（このサイトはアクセス制限が厳しいため本文の取得をスキップした。）",
+  fetch_failed:
+    "（本文の取得に失敗した。JavaScriptレンダリングやCloudflare等のアクセス制限が原因と考えられる。）",
+};
+
+const MISSING_ARTICLE_NOTICE: Record<MissingArticleStatus, string> = {
+  no_url: "この投稿には元記事がないため、以下はHNコメントのみに基づきます。",
+  fetch_skipped:
+    "元記事の本文を取得していないため、以下はHNコメントのみに基づきます。",
+  fetch_failed:
+    "元記事の本文を取得できなかったため、以下はHNコメントのみに基づきます。",
+};
+
 function articleContentForPrompt(article: ArticleInput): string {
-  if (article.status === "no_url") {
-    return "（この記事にはURLがなく本文は存在しません。HNコメントのみを基に要約してください。）";
-  }
-  if (article.status === "fetch_skipped") {
-    return "（このサイトはアクセス制限が厳しいため本文の取得をスキップしています。HNコメントを中心に要約してください。）";
-  }
-  if (article.status === "fetch_failed") {
-    return "（本文の取得に失敗しました。JavaScriptレンダリングやCloudflare等のアクセス制限が原因と考えられます。HNコメントを中心に要約してください。）";
-  }
-  return article.content;
+  if (article.status === "ok") return article.content;
+  return MISSING_ARTICLE_PROMPT[article.status];
+}
+
+// class="notice" は feed 側が og:description の生成元から除外するための目印
+function missingArticleNoticeHtml(status: MissingArticleStatus): string {
+  return `<p class="notice">${MISSING_ARTICLE_NOTICE[status]}</p>`;
 }
 
 export async function generateSummary(
@@ -135,9 +163,11 @@ ${commentsText}
 箇条書き・表では体言止めを優先し、<p>内は通常の文で書く。構造体(箇条書き、表)を活用し情報密度を最大化。
 HNコメント冒頭の [username] は返信関係を追うための識別子。要約出力にはユーザー名を一切書かず、「〜氏は」のような個人への帰属表現も使わない。誰が言ったかではなく意見・論点そのものを主語にして記述する。`;
 
+  const schema = responseSchema(article.status === "ok");
+
   let lastFormatError: SummaryFormatError | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const data = await requestSummary(apiKey, prompt);
+    const data = await requestSummary(apiKey, prompt, schema);
     const candidate = data.candidates?.[0];
     if (candidate?.finishReason !== "STOP") {
       throw new Error(
@@ -146,8 +176,18 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
     }
     const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
     try {
-      const doc = parseSummaryDoc(text.trim());
-      await validateSummaryDoc(doc);
+      const parsed = parseSummaryDoc(text.trim());
+      await validateSummaryDoc(parsed);
+      if (article.status === "ok" && parsed.articleHtml === undefined) {
+        throw new SummaryFormatError("articleHtml is missing");
+      }
+      const doc =
+        article.status === "ok"
+          ? parsed
+          : {
+              ...parsed,
+              articleHtml: missingArticleNoticeHtml(article.status),
+            };
       return {
         summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
         inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
@@ -167,6 +207,7 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
 async function requestSummary(
   apiKey: string,
   prompt: string,
+  schema: object,
 ): Promise<GeminiResponse> {
   const resp = await fetch(
     `${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`,
@@ -179,7 +220,7 @@ async function requestSummary(
           temperature: 0.3,
           maxOutputTokens: 2048,
           responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
+          responseSchema: schema,
         },
       }),
     },
