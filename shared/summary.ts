@@ -5,11 +5,18 @@ export interface SummaryTopic {
   bodyHtml: string;
 }
 
-export interface SummaryDoc {
+// モデル出力そのもの。元記事本文が無いときは articleHtml をレスポンススキーマから
+// 外して生成させないため、そのケースに限り欠落する。
+export interface ParsedSummaryDoc {
   jaTitle: string;
-  articleHtml: string;
+  articleHtml?: string;
   hnOverviewHtml: string;
   topics: SummaryTopic[];
+}
+
+// レンダリング入力。欠落ケースは呼び出し側が固定の注記で埋めてからここへ渡す。
+export interface SummaryDoc extends ParsedSummaryDoc {
+  articleHtml: string;
 }
 
 export class SummaryFormatError extends Error {
@@ -86,8 +93,8 @@ export async function validateFragment(html: string): Promise<void> {
   }
 }
 
-export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
-  await validateFragment(doc.articleHtml);
+export async function validateSummaryDoc(doc: ParsedSummaryDoc): Promise<void> {
+  if (doc.articleHtml !== undefined) await validateFragment(doc.articleHtml);
   await validateFragment(doc.hnOverviewHtml);
   for (const topic of doc.topics) {
     await validateFragment(topic.bodyHtml);
@@ -108,7 +115,7 @@ function asString(v: unknown, field: string): string {
   return v;
 }
 
-export function parseSummaryDoc(text: string): SummaryDoc {
+export function parseSummaryDoc(text: string): ParsedSummaryDoc {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -124,10 +131,13 @@ export function parseSummaryDoc(text: string): SummaryDoc {
   }
   return {
     jaTitle: requireNonEmpty(asString(o.jaTitle, "jaTitle"), "jaTitle"),
-    articleHtml: requireNonEmpty(
-      asString(o.articleHtml, "articleHtml"),
-      "articleHtml",
-    ),
+    articleHtml:
+      o.articleHtml === undefined
+        ? undefined
+        : requireNonEmpty(
+            asString(o.articleHtml, "articleHtml"),
+            "articleHtml",
+          ),
     hnOverviewHtml: requireNonEmpty(
       asString(o.hnOverviewHtml, "hnOverviewHtml"),
       "hnOverviewHtml",

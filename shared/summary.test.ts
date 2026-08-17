@@ -47,6 +47,20 @@ describe("parseSummaryDoc", () => {
     ).toThrow(SummaryFormatError);
   });
 
+  it("articleHtml の欠落は許容する", () => {
+    // JSON.stringify は undefined のキーを落とす
+    const doc = parseSummaryDoc(
+      JSON.stringify({ ...makeDoc(), articleHtml: undefined }),
+    );
+    expect(doc.articleHtml).toBeUndefined();
+  });
+
+  it("空の articleHtml は拒否する", () => {
+    expect(() =>
+      parseSummaryDoc(JSON.stringify(makeDoc({ articleHtml: " " }))),
+    ).toThrow(SummaryFormatError);
+  });
+
   it("topics が配列でない場合を拒否する", () => {
     expect(() =>
       parseSummaryDoc(JSON.stringify({ ...makeDoc(), topics: "not array" })),
