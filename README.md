@@ -81,12 +81,6 @@ bash scripts/sync-github-env.sh
 git config core.hooksPath .githooks
 ```
 
-`.gitattributes` で作業ツリーの改行を LF に固定している。Windows で `.gitattributes` 導入前に作った checkout や worktree は CRLF のまま残るので、未コミットの変更がない状態で一度だけ再チェックアウトする。
-
-```bash
-git rm --cached -r -q . && git reset --hard
-```
-
 ### 2. 依存パッケージインストール
 
 ```bash

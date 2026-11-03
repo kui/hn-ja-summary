@@ -1,2 +1,1 @@
-# Windows の core.autocrlf=true でも作業ツリーを LF にそろえ、prettier と fmt-sql の --check を通す
 * text=auto eol=lf
