@@ -15,15 +15,11 @@ import { setCompleted, setError, setSkipped } from "./state";
 const MAX_COMMENTS = 100;
 
 // Gemini が一時的に使えないときの再試行間隔。Flex の容量不足は数分〜十数分続きうるので
-// 1 分から倍々に延ばし、1 時間で頭打ちにする。
+// 1 分から倍々に延ばす。回数の上限は wrangler.toml の max_retries。
 const RETRY_BASE_DELAY_SECONDS = 60;
-const RETRY_MAX_DELAY_SECONDS = 60 * 60;
 
 function retryDelaySeconds(attempts: number): number {
-  return Math.min(
-    RETRY_BASE_DELAY_SECONDS * 2 ** (attempts - 1),
-    RETRY_MAX_DELAY_SECONDS,
-  );
+  return RETRY_BASE_DELAY_SECONDS * 2 ** (attempts - 1);
 }
 
 async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {

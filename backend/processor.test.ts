@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queue } from "./processor.ts";
 
 const ITEM_ID = 1;
@@ -48,6 +48,16 @@ async function runQueue(attempts: number) {
   return message;
 }
 
+async function itemState(): Promise<string | null> {
+  return env.DB.prepare("SELECT state FROM processed_items WHERE id = ?")
+    .bind(ITEM_ID)
+    .first<string>("state");
+}
+
+beforeEach(async () => {
+  await env.DB.prepare("DELETE FROM processed_items").run();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -55,9 +65,10 @@ afterEach(() => {
 describe("queue", () => {
   it.each([
     [429, 1, 60],
-    [503, 1, 60],
+    [504, 1, 60],
     [503, 3, 240],
-    [503, 10, 3600],
+    // max_retries = 6 なので、再試行を予約する最後の配信は attempts=6
+    [503, 6, 1920],
   ])(
     "Gemini が %i を返したら attempts=%i で %i 秒後に再試行する",
     async (status, attempts, delaySeconds) => {
@@ -66,14 +77,17 @@ describe("queue", () => {
       const message = await runQueue(attempts);
       expect(message.retry).toHaveBeenCalledWith({ delaySeconds });
       expect(message.ack).not.toHaveBeenCalled();
+      expect(await itemState()).toBeNull();
     },
   );
 
   it("一時的でないエラーは再試行せず ack する", async () => {
     mockFetch(400);
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const message = await runQueue(1);
     expect(message.retry).not.toHaveBeenCalled();
     expect(message.ack).toHaveBeenCalled();
+    expect(await itemState()).toBe("error");
+    expect(error).toHaveBeenCalledTimes(1);
   });
 });

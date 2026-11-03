@@ -4,6 +4,7 @@ import {
   SummaryFormatError,
   validateSummaryDoc,
 } from "@hn-feed/shared/summary";
+import { Temporal } from "temporal-polyfill";
 import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -13,6 +14,9 @@ const MAX_ATTEMPTS = 2;
 // consumer の wall time 上限 15 分から HN・記事取得の時間を残し、
 // フォーマット再生成を含む Gemini 呼び出し全体をこの時間に収める。
 const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
+// サーバー側の打ち切り（X-Server-Timeout）をクライアント側より少し早めにし、
+// 504 を受け取って再試行に回せるようにする。
+const SERVER_TIMEOUT_MARGIN_MS = 30 * 1000;
 
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
@@ -81,13 +85,15 @@ function responseSchema(hasArticle: boolean) {
 // 容量不足・レート制限・タイムアウトなど、時間を置けば通る見込みのある失敗。
 // Flex は容量不足でも Standard へ自動で切り替わらないため、呼び出し側で遅延付き再試行する。
 export class GeminiUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "GeminiUnavailableError";
   }
 }
 
-const TRANSIENT_STATUSES = new Set([429, 503]);
+// 公式のエラー一覧で再試行が案内されているもの。
+// 429: レート制限, 500: サーバー内部エラー, 503: 容量不足, 504: 期限切れ（X-Server-Timeout 超過）
+const TRANSIENT_STATUSES = new Set([429, 500, 503, 504]);
 
 interface GeminiResponse {
   candidates: Array<{
@@ -174,10 +180,11 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
 
   const schema = responseSchema(article.status === "ok");
 
-  const signal = AbortSignal.timeout(GEMINI_TIMEOUT_MS);
+  const deadlineMs =
+    Temporal.Now.instant().epochMilliseconds + GEMINI_TIMEOUT_MS;
   let lastFormatError: SummaryFormatError | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const data = await requestSummary(apiKey, prompt, schema, signal);
+    const data = await requestSummary(apiKey, prompt, schema, deadlineMs);
     const candidate = data.candidates?.[0];
     if (candidate?.finishReason !== "STOP") {
       throw new Error(
@@ -216,13 +223,22 @@ async function requestSummary(
   apiKey: string,
   prompt: string,
   schema: object,
-  signal: AbortSignal,
+  deadlineMs: number,
 ): Promise<GeminiResponse> {
+  const remainingMs = deadlineMs - Temporal.Now.instant().epochMilliseconds;
+  const serverTimeoutSeconds = Math.max(
+    1,
+    Math.floor((remainingMs - SERVER_TIMEOUT_MARGIN_MS) / 1000),
+  );
   let resp: Response;
+  let body: string;
   try {
     resp = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Server-Timeout": String(serverTimeoutSeconds),
+      },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         service_tier: "flex",
@@ -233,19 +249,17 @@ async function requestSummary(
           responseSchema: schema,
         },
       }),
-      signal,
+      signal: AbortSignal.timeout(Math.max(1, remainingMs)),
     });
+    body = await resp.text();
   } catch (err) {
-    if (err instanceof Error && err.name === "TimeoutError") {
-      throw new GeminiUnavailableError(
-        `Gemini request timed out after ${GEMINI_TIMEOUT_MS}ms`,
-      );
-    }
-    throw err;
+    // タイムアウトや接続切れ。Flex は接続を数分〜十数分保つので起きやすく、時間を置けば通る見込みがある
+    throw new GeminiUnavailableError(`Gemini request failed: ${String(err)}`, {
+      cause: err,
+    });
   }
 
   if (!resp.ok) {
-    const body = await resp.text();
     if (TRANSIENT_STATUSES.has(resp.status)) {
       throw new GeminiUnavailableError(
         `Gemini unavailable: ${resp.status} ${body}`,
@@ -254,10 +268,20 @@ async function requestSummary(
     throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }
 
-  const data = await resp.json<GeminiResponse>();
-  // Flex の容量が足りなくても Standard へは切り替わらない仕様だが、実際に Flex で処理されたかを記録しておく
-  console.log(
-    `  [gemini] service tier: header=${resp.headers.get("x-gemini-service-tier") ?? "(none)"} usageMetadata=${data.usageMetadata?.serviceTier ?? "(none)"}`,
+  const data = JSON.parse(body) as GeminiResponse;
+  logServiceTier(
+    resp.headers.get("x-gemini-service-tier"),
+    data.usageMetadata?.serviceTier,
   );
   return data;
+}
+
+// Flex の指定が効かず Standard の料金で処理されたら気付けるよう、Flex 以外は警告にする
+function logServiceTier(header: string | null, usageMetadata?: string): void {
+  const line = `  [gemini] service tier: header=${header ?? "(none)"} usageMetadata=${usageMetadata ?? "(none)"}`;
+  if ([header, usageMetadata].some((t) => t?.toLowerCase() === "flex")) {
+    console.log(line);
+  } else {
+    console.warn(`${line} (not flex)`);
+  }
 }
