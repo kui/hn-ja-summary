@@ -120,7 +120,14 @@ Cloudflare Zero Trust ダッシュボードで admin-worker の URL に対して
 
 ### 7. デプロイ
 
+`production` ブランチへの push で GitHub Actions（`.github/workflows/deploy.yml`）が
+CI → D1 マイグレーション → 3 Worker のデプロイの順に実行する。CI が落ちたら
+マイグレーションもデプロイも走らない。
+
+手動でデプロイするときも、カラム追加などのマイグレーションを先に当ててから Worker をデプロイする。
+
 ```bash
+(cd feed && npx wrangler d1 migrations apply hn-feed --remote)
 npm -w feed run deploy
 npm -w backend run deploy
 npm -w admin run deploy
