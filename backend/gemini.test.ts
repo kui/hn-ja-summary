@@ -62,6 +62,10 @@ describe("generateSummary", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain(`/models/${MODEL}:generateContent`);
+    // API キーはトレースに残る URL ではなくヘッダで渡す
+    expect(new URL(String(url)).search).toBe("");
+    expect(String(url)).not.toContain("test-key");
+    expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("test-key");
     expect(JSON.parse(String(init?.body))).toMatchObject({
       service_tier: "flex",
     });

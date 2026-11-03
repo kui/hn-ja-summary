@@ -213,10 +213,12 @@ async function requestSummary(
   let resp: Response;
   let body: string;
   try {
-    resp = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`, {
+    resp = await fetch(`${GEMINI_API}/${MODEL}:generateContent`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // URL に載せるとトレース（observability.traces）に外向き fetch の URL ごと残るため、ヘッダで渡す
+        "x-goog-api-key": apiKey,
         "X-Server-Timeout": String(SERVER_TIMEOUT_SECONDS),
       },
       body: JSON.stringify({
