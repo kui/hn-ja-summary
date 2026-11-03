@@ -4,7 +4,6 @@ on:
   push:
     branches: [production]
 
-# 連続 push で古いコードが後からデプロイされないよう、デプロイは 1 本ずつ順に流す
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -13,7 +12,6 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  # 新しいコードが追加カラムを参照する前に、スキーマを先に進める
   migrate:
     needs: ci
     runs-on: ubuntu-latest
