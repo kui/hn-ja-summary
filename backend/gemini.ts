@@ -15,7 +15,6 @@ const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
 // サーバー側の打ち切り（X-Server-Timeout）をクライアント側より少し早めにし、
 // 504 を受け取って再試行に回せるようにする。
 const SERVER_TIMEOUT_SECONDS = GEMINI_TIMEOUT_MS / 1000 - 30;
-// maxOutputTokens は思考トークンも含む上限なので、要約本体の分より大きく取る
 const MAX_OUTPUT_TOKENS = 8192;
 
 const HTML_FRAGMENT_RULES = [
@@ -238,7 +237,6 @@ async function requestSummary(
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         service_tier: "flex",
-        // temperature・topP・topK は 3.5 Flash-Lite 以降で非推奨。無視され、将来の世代では 400 になる
         generationConfig: {
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           // 思考量をモデルの既定値に依存させない
