@@ -20,11 +20,16 @@ migrations_dir = "../migrations"
 binding = "QUEUE"
 queue = "hn-processor"
 
+# Gemini は Flex 推論で呼ぶため 1 件あたり最大十数分かかる。consumer の wall time 上限は
+# 1 回の実行あたり 15 分なので、1 回 1 件にして上限に収め、件数は並列実行（max_concurrency 未指定で自動スケール）でこなす。
+# Flex の容量不足（503/429）は processor が 1 分から倍々の遅延で再試行する。6 回で計約 1 時間待つ。
+# retry_delay は wall time 超過などで実行自体が失敗したときの再配信間隔。
 [[queues.consumers]]
 queue = "hn-processor"
-max_batch_size = 5
+max_batch_size = 1
 max_batch_timeout = 30
-max_retries = 3
+max_retries = 6
+retry_delay = 300
 
 [observability.logs]
 enabled = true

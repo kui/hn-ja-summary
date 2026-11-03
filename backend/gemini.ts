@@ -7,8 +7,12 @@ import {
 import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
-export const MODEL = "gemini-3.1-flash-lite";
+export const MODEL = "gemini-3.5-flash-lite";
 const MAX_ATTEMPTS = 2;
+// Flex はキュー待ちで数分かかる（目安 1〜15 分）。公式は 10 分以上のクライアント側タイムアウトを推奨。
+// consumer の wall time 上限 15 分から HN・記事取得の時間を残し、
+// フォーマット再生成を含む Gemini 呼び出し全体をこの時間に収める。
+const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
 
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
@@ -74,12 +78,16 @@ function responseSchema(hasArticle: boolean) {
   };
 }
 
-export class GeminiQuotaError extends Error {
+// 容量不足・レート制限・タイムアウトなど、時間を置けば通る見込みのある失敗。
+// Flex は容量不足でも Standard へ自動で切り替わらないため、呼び出し側で遅延付き再試行する。
+export class GeminiUnavailableError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "GeminiQuotaError";
+    this.name = "GeminiUnavailableError";
   }
 }
+
+const TRANSIENT_STATUSES = new Set([429, 503]);
 
 interface GeminiResponse {
   candidates: Array<{
@@ -90,6 +98,7 @@ interface GeminiResponse {
     promptTokenCount: number;
     candidatesTokenCount: number;
     totalTokenCount: number;
+    serviceTier?: string;
   };
 }
 
@@ -165,9 +174,10 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
 
   const schema = responseSchema(article.status === "ok");
 
+  const signal = AbortSignal.timeout(GEMINI_TIMEOUT_MS);
   let lastFormatError: SummaryFormatError | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const data = await requestSummary(apiKey, prompt, schema);
+    const data = await requestSummary(apiKey, prompt, schema, signal);
     const candidate = data.candidates?.[0];
     if (candidate?.finishReason !== "STOP") {
       throw new Error(
@@ -206,14 +216,16 @@ async function requestSummary(
   apiKey: string,
   prompt: string,
   schema: object,
+  signal: AbortSignal,
 ): Promise<GeminiResponse> {
-  const resp = await fetch(
-    `${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`,
-    {
+  let resp: Response;
+  try {
+    resp = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
+        service_tier: "flex",
         generationConfig: {
           temperature: 0.3,
           maxOutputTokens: 2048,
@@ -221,18 +233,31 @@ async function requestSummary(
           responseSchema: schema,
         },
       }),
-    },
-  );
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new GeminiUnavailableError(
+        `Gemini request timed out after ${GEMINI_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  }
 
   if (!resp.ok) {
     const body = await resp.text();
-    if (resp.status === 429) {
-      throw new GeminiQuotaError(
-        `Gemini quota exceeded: ${resp.status} ${body}`,
+    if (TRANSIENT_STATUSES.has(resp.status)) {
+      throw new GeminiUnavailableError(
+        `Gemini unavailable: ${resp.status} ${body}`,
       );
     }
     throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }
 
-  return await resp.json<GeminiResponse>();
+  const data = await resp.json<GeminiResponse>();
+  // Flex の容量が足りなくても Standard へは切り替わらない仕様だが、実際に Flex で処理されたかを記録しておく
+  console.log(
+    `  [gemini] service tier: header=${resp.headers.get("x-gemini-service-tier") ?? "(none)"} usageMetadata=${data.usageMetadata?.serviceTier ?? "(none)"}`,
+  );
+  return data;
 }

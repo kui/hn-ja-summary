@@ -18,11 +18,12 @@ Cron Trigger
         ├─ D1: processed_items で重複チェック
         └─ CF Queue: 未処理を投入
 
-CF Queues (hn-processor)
+CF Queues (hn-processor, 1 回の実行で 1 件)
   └─→ backend-worker (queue)
         ├─ Algolia HN API: コメントツリー取得
         ├─ Jina + raw fetch: 元記事取得
-        ├─ Gemini: 日本語要約を構造化出力 (JSON) で生成
+        ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
+        │    └─ 容量不足 (503/429)・タイムアウトは遅延を倍々に延ばして再試行
         ├─ 検証して HTML を組み立て（不正なら 1 回再生成）
         └─ D1: feed_items / processed_items 更新
 
