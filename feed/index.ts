@@ -20,6 +20,7 @@ SELECT id, title,
   article_fetch_method AS articleFetchMethod,
   input_tokens AS inputTokens,
   output_tokens AS outputTokens,
+  thoughts_tokens AS thoughtsTokens,
   updated_at_ms AS updatedAt
 FROM feed_items
 ORDER BY created_at_ms DESC
@@ -41,6 +42,7 @@ SELECT id, title,
   article_fetch_method AS articleFetchMethod,
   input_tokens AS inputTokens,
   output_tokens AS outputTokens,
+  thoughts_tokens AS thoughtsTokens,
   updated_at_ms AS updatedAt
 FROM feed_items
 WHERE created_at_ms <= ?
@@ -71,6 +73,7 @@ SELECT id, title,
   article_fetch_method AS articleFetchMethod,
   input_tokens AS inputTokens,
   output_tokens AS outputTokens,
+  thoughts_tokens AS thoughtsTokens,
   updated_at_ms AS updatedAt
 FROM feed_items
 WHERE id = ?

@@ -116,6 +116,7 @@ export interface SummaryResult {
   summaryHtml: string;
   inputTokens: number;
   outputTokens: number;
+  thoughtsTokens: number;
 }
 
 type MissingArticleStatus = Exclude<ArticleInput["status"], "ok">;
@@ -186,15 +187,14 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
 
   const data = await requestSummary(apiKey, prompt, schema);
   const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
-  // 思考トークンも出力トークンとして課金されるので合算する
-  const outputTokens =
-    (data.usageMetadata?.candidatesTokenCount ?? 0) +
-    (data.usageMetadata?.thoughtsTokenCount ?? 0);
+  const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
+  // 思考トークンも出力として課金される。これまでの outputTokens と意味が変わらないよう別に記録する
+  const thoughtsTokens = data.usageMetadata?.thoughtsTokenCount ?? 0;
   const candidate = data.candidates?.[0];
   if (candidate?.finishReason === "MAX_TOKENS") {
     // 上限には余裕があるので、ここに来るのは繰り返しなどの暴走。出力は毎回ばらつくので、作り直せば通る見込みがある
     throw new SummaryFormatError(
-      `Gemini output truncated: finishReason=MAX_TOKENS outputTokens=${outputTokens}`,
+      `Gemini output truncated: finishReason=MAX_TOKENS outputTokens=${outputTokens} thoughtsTokens=${thoughtsTokens}`,
     );
   }
   if (candidate?.finishReason !== "STOP") {
@@ -217,6 +217,7 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
     summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
     inputTokens,
     outputTokens,
+    thoughtsTokens,
   };
 }
 

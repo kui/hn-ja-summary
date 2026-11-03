@@ -123,12 +123,13 @@ describe("generateSummary", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("記録する出力トークンに思考トークンを含める", async () => {
+  it("思考トークンは出力トークンと分けて返す", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       geminiOk({ thoughtsTokenCount: 30 }),
     );
     const result = await summarize();
-    expect(result.outputTokens).toBe(80);
+    expect(result.outputTokens).toBe(50);
+    expect(result.thoughtsTokens).toBe(30);
   });
 
   it("出力上限で途切れたら再試行の対象として SummaryFormatError を投げる", async () => {
