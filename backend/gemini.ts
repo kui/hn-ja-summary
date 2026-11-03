@@ -224,8 +224,8 @@ async function requestSummary(
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         service_tier: "flex",
+        // temperature・topP・topK は 3.5 Flash-Lite 以降で非推奨。無視され、将来の世代では 400 になる
         generationConfig: {
-          temperature: 0.3,
           maxOutputTokens: 2048,
           responseMimeType: "application/json",
           responseSchema: schema,
