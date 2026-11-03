@@ -139,6 +139,26 @@ describe("generateSummary", () => {
     await expect(summarize()).rejects.toThrow(SummaryFormatError);
   });
 
+  it.each([
+    ["成功", { thoughtsTokenCount: 30 }, "STOP"],
+    [
+      "出力上限",
+      { finishReason: "MAX_TOKENS", thoughtsTokenCount: 30 },
+      "MAX_TOKENS",
+    ],
+    ["形式不正", { text: "{", thoughtsTokenCount: 30 }, "STOP"],
+  ])(
+    "%sのときもトークン使用量をログに出す",
+    async (_, response, finishReason) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(geminiOk(response));
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await summarize().catch(() => {});
+      expect(log).toHaveBeenCalledWith(
+        `  [gemini] usage: item=1 finishReason=${finishReason} input=100 output=50 thoughts=30`,
+      );
+    },
+  );
+
   it("安全性フィルタなどで止まったら再試行しないエラーにする", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       geminiOk({ finishReason: "SAFETY" }),

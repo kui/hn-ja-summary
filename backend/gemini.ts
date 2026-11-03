@@ -188,10 +188,14 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
   const thoughtsTokens = data.usageMetadata?.thoughtsTokenCount ?? 0;
   const candidate = data.candidates?.[0];
+  // feed_items には成功した回の分しか残らないので、失敗した回の使用量はログで追う
+  console.log(
+    `  [gemini] usage: item=${itemId} finishReason=${candidate?.finishReason ?? "(none)"} input=${inputTokens} output=${outputTokens} thoughts=${thoughtsTokens}`,
+  );
   if (candidate?.finishReason === "MAX_TOKENS") {
     // 上限に達するのは繰り返しなどの暴走で、作り直せば通る見込みがあるので再試行に回す
     throw new SummaryFormatError(
-      `Gemini output truncated: finishReason=MAX_TOKENS outputTokens=${outputTokens} thoughtsTokens=${thoughtsTokens}`,
+      "Gemini output truncated: finishReason=MAX_TOKENS",
     );
   }
   if (candidate?.finishReason !== "STOP") {
