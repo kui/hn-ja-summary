@@ -51,7 +51,8 @@ export interface AlgoliaComment {
   children: AlgoliaComment[];
 }
 const SEARCH_WINDOW_SECONDS = 24 * 60 * 60;
-const CANDIDATE_PAGES = [0, 1, 2, 3, 4];
+// Algolia が 1 リクエストで返せる上限。これを超える件数は取得できない
+const MAX_HITS_PER_PAGE = 1000;
 
 interface AlgoliaSearchHit {
   objectID: string;
@@ -66,7 +67,7 @@ interface AlgoliaSearchHit {
 
 interface AlgoliaSearchResponse {
   hits: AlgoliaSearchHit[];
-  nbPages: number;
+  nbHits: number;
 }
 
 function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
@@ -88,45 +89,32 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
   const since = now - SEARCH_WINDOW_SECONDS;
   const until = now - MIN_AGE_HOURS * 3600;
 
-  // Algolia HN API only allows created_at_i in numericFilters; points/num_comments must be filtered client-side
+  // 対象期間の全ストーリーは 1000 件を超えるので、ポイントとコメント数も Algolia 側で絞る
   const numericFilters = encodeURIComponent(
-    [`created_at_i>=${since}`, `created_at_i<=${until}`].join(","),
+    [
+      `created_at_i>=${since}`,
+      `created_at_i<=${until}`,
+      `points>=${VELOCITY_THRESHOLD}`,
+      `num_comments>=${MIN_COMMENTS}`,
+    ].join(","),
   );
-  const responses = await Promise.all(
-    CANDIDATE_PAGES.map((page) =>
-      fetch(
-        `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&page=${page}`,
-      ).then((r) => {
-        if (!r.ok) {
-          console.error(`Algolia search page ${page} failed: ${r.status}`);
-          return null;
-        }
-        return r.json<AlgoliaSearchResponse>();
-      }),
-    ),
+  const resp = await fetch(
+    `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&hitsPerPage=${MAX_HITS_PER_PAGE}`,
   );
+  if (!resp.ok) {
+    console.error(`Algolia search failed: ${resp.status}`);
+    return [];
+  }
+  const res = await resp.json<AlgoliaSearchResponse>();
 
-  const maxNbPages = Math.max(...responses.map((r) => r?.nbPages ?? 0));
-  if (maxNbPages > CANDIDATE_PAGES.length) {
+  // nbPages は hitsPerPage=1000 だと常に 1 になるため、取り切れたかは nbHits で判定する
+  if (res.nbHits > res.hits.length) {
     console.warn(
-      `WARNING: Algolia returned ${maxNbPages} pages but only ${CANDIDATE_PAGES.length} were fetched. Some candidates may be missed.`,
+      `WARNING: Algolia matched ${res.nbHits} stories but only ${res.hits.length} were fetched. Some candidates may be missed.`,
     );
   }
 
-  const seen = new Set<number>();
-  const items: HNItem[] = [];
-  for (const res of responses) {
-    if (!res) continue;
-    for (const hit of res.hits) {
-      if ((hit.points ?? 0) < VELOCITY_THRESHOLD) continue;
-      if ((hit.num_comments ?? 0) < MIN_COMMENTS) continue;
-      const id = parseInt(hit.objectID, 10);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      items.push(algoliaHitToHNItem(hit));
-    }
-  }
-  return items;
+  return res.hits.map(algoliaHitToHNItem);
 }
 
 export async function fetchHNItemWithComments(

@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { flattenTopComments } from "./hn.ts";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { fetchCandidateStories, flattenTopComments } from "./hn.ts";
 import type { AlgoliaComment } from "./hn.ts";
 
 function makeComment(
@@ -152,5 +152,75 @@ describe("flattenTopComments", () => {
     const result = flattenTopComments([c], 10);
     expect(result[0].includes("hello <b>world</b>")).toBe(true);
     expect(result[0].includes("<p>")).toBe(true);
+  });
+});
+
+describe("fetchCandidateStories", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function hit(objectID: string) {
+    return {
+      objectID,
+      title: `story ${objectID}`,
+      url: null,
+      author: "alice",
+      points: 100,
+      num_comments: 50,
+      created_at_i: 1_700_000_000,
+      story_text: null,
+    };
+  }
+
+  function mockSearch(body: unknown, status = 200) {
+    return vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify(body), { status }));
+  }
+
+  it("ポイントとコメント数の条件を Algolia に渡し、1 リクエストで取得する", async () => {
+    const fetchMock = mockSearch({ hits: [hit("1")], nbHits: 1 });
+    await fetchCandidateStories();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.get("hitsPerPage")).toBe("1000");
+    const filters = url.searchParams.get("numericFilters")!.split(",");
+    expect(filters).toContain("points>=20");
+    expect(filters).toContain("num_comments>=40");
+    expect(filters.filter((f) => f.startsWith("created_at_i"))).toHaveLength(2);
+  });
+
+  it("ヒットを HNItem に変換して返す", async () => {
+    mockSearch({ hits: [hit("1"), hit("2")], nbHits: 2 });
+    const items = await fetchCandidateStories();
+    expect(items.map((i) => i.id)).toEqual([1, 2]);
+    expect(items[0]).toMatchObject({
+      type: "story",
+      by: "alice",
+      points: 100,
+      descendants: 50,
+      title: "story 1",
+    });
+  });
+
+  it("取り切れないときだけ警告する", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockSearch({ hits: [hit("1")], nbHits: 1 });
+    await fetchCandidateStories();
+    expect(warn).not.toHaveBeenCalled();
+
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ hits: [hit("1")], nbHits: 1001 })),
+    );
+    await fetchCandidateStories();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("検索が失敗したら空配列を返す", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSearch({}, 503);
+    expect(await fetchCandidateStories()).toEqual([]);
   });
 });
