@@ -23,7 +23,7 @@ CF Queues (hn-processor, 1 回の実行で 1 件)
         ├─ Algolia HN API: コメントツリー取得
         ├─ Jina + raw fetch: 元記事取得
         ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
-        │    └─ 一時的なエラー (429/500/503/504)・タイムアウト・接続切れは遅延を倍々に延ばして再試行
+        │    └─ 一時的なエラー (429/408/5xx)・タイムアウト・接続切れは遅延を倍々に延ばして再試行
         ├─ 検証して HTML を組み立て（不正なら 1 回再生成）
         └─ D1: feed_items / processed_items 更新
 

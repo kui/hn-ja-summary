@@ -91,9 +91,11 @@ export class GeminiUnavailableError extends Error {
   }
 }
 
-// 公式のエラー一覧で再試行が案内されているもの。
-// 429: レート制限, 500: サーバー内部エラー, 503: 容量不足, 504: 期限切れ（X-Server-Timeout 超過）
-const TRANSIENT_STATUSES = new Set([429, 500, 503, 504]);
+// 公式の Troubleshooting で再試行の対象とされているもの（429・408・5xx）。
+// Flex の容量不足は 503、X-Server-Timeout 超過は 504 で返る。
+function isTransientStatus(status: number): boolean {
+  return status === 429 || status === 408 || status >= 500;
+}
 
 interface GeminiResponse {
   candidates: Array<{
@@ -260,7 +262,7 @@ async function requestSummary(
   }
 
   if (!resp.ok) {
-    if (TRANSIENT_STATUSES.has(resp.status)) {
+    if (isTransientStatus(resp.status)) {
       throw new GeminiUnavailableError(
         `Gemini unavailable: ${resp.status} ${body}`,
       );

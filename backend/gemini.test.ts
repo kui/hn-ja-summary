@@ -89,7 +89,7 @@ describe("generateSummary", () => {
     expect(timeouts[1]).toBeLessThanOrEqual(timeouts[0]!);
   });
 
-  it.each([429, 500, 503, 504])(
+  it.each([408, 429, 500, 502, 503, 504])(
     "%i は一時的なエラーとして GeminiUnavailableError を投げる",
     async (status) => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
