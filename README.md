@@ -24,7 +24,7 @@ CF Queues (hn-processor, 1 回の実行で 1 件)
         ├─ Jina + raw fetch: 元記事取得
         ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
         ├─ 検証して HTML を組み立て
-        │    └─ 一時的なエラー (429/408/5xx)・タイムアウト・接続切れ・形式不正は
+        │    └─ 一時的なエラー (429/408/5xx)・タイムアウト・接続切れ・形式不正・出力上限での途切れは
         │       その場で作り直さず、キューで遅延を倍々に延ばして再試行
         └─ D1: feed_items / processed_items 更新
 

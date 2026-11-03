@@ -193,7 +193,7 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
     `  [gemini] usage: item=${itemId} finishReason=${candidate?.finishReason ?? "(none)"} input=${inputTokens} output=${outputTokens} thoughts=${thoughtsTokens}`,
   );
   if (candidate?.finishReason === "MAX_TOKENS") {
-    // 上限に達するのは繰り返しなどの暴走で、作り直せば通る見込みがあるので再試行に回す
+    // 途切れた出力は作り直せば上限内に収まる見込みがあるので再試行に回す
     throw new SummaryFormatError(
       "Gemini output truncated: finishReason=MAX_TOKENS",
     );
