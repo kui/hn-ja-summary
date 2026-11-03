@@ -15,6 +15,9 @@ const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
 // サーバー側の打ち切り（X-Server-Timeout）をクライアント側より少し早めにし、
 // 504 を受け取って再試行に回せるようにする。
 const SERVER_TIMEOUT_SECONDS = GEMINI_TIMEOUT_MS / 1000 - 30;
+// maxOutputTokens は思考トークンを含めた上限。これまで要約本体は 2048 に収まっていたので、
+// 思考の分を見込んで余裕を持たせる。課金は実際に生成した分だけなので、上げても普段の費用は変わらない。
+const MAX_OUTPUT_TOKENS = 8192;
 
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
@@ -103,6 +106,7 @@ interface GeminiResponse {
   usageMetadata?: {
     promptTokenCount: number;
     candidatesTokenCount: number;
+    thoughtsTokenCount?: number;
     totalTokenCount: number;
     serviceTier?: string;
   };
@@ -181,7 +185,18 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   const schema = responseSchema(article.status === "ok");
 
   const data = await requestSummary(apiKey, prompt, schema);
+  const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
+  // 思考トークンも出力トークンとして課金されるので合算する
+  const outputTokens =
+    (data.usageMetadata?.candidatesTokenCount ?? 0) +
+    (data.usageMetadata?.thoughtsTokenCount ?? 0);
   const candidate = data.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    // 上限には余裕があるので、ここに来るのは繰り返しなどの暴走。出力は毎回ばらつくので、作り直せば通る見込みがある
+    throw new SummaryFormatError(
+      `Gemini output truncated: finishReason=MAX_TOKENS outputTokens=${outputTokens}`,
+    );
+  }
   if (candidate?.finishReason !== "STOP") {
     throw new Error(
       `Gemini output incomplete or blocked: finishReason=${candidate?.finishReason ?? "no candidate"}`,
@@ -200,8 +215,8 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   const doc = { ...parsed, articleHtml };
   return {
     summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
-    inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+    inputTokens,
+    outputTokens,
   };
 }
 
@@ -226,7 +241,9 @@ async function requestSummary(
         service_tier: "flex",
         // temperature・topP・topK は 3.5 Flash-Lite 以降で非推奨。無視され、将来の世代では 400 になる
         generationConfig: {
-          maxOutputTokens: 2048,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          // 3.5 Flash-Lite の既定は minimal。モデルの既定が変わっても思考量が増えないよう明示する
+          thinkingConfig: { thinkingLevel: "MINIMAL" },
           responseMimeType: "application/json",
           responseSchema: schema,
         },
