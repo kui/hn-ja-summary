@@ -1,5 +1,5 @@
 import { Temporal } from "temporal-polyfill";
-import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
+import { candidateNumericFilters } from "./filter.ts";
 
 // Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
@@ -50,7 +50,6 @@ export interface AlgoliaComment {
   created_at: string;
   children: AlgoliaComment[];
 }
-const SEARCH_WINDOW_SECONDS = 24 * 60 * 60;
 // Algolia が 1 リクエストで返せる上限。これを超える件数は取得できない
 const MAX_HITS_PER_PAGE = 1000;
 
@@ -86,19 +85,10 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 
 export async function fetchCandidateStories(): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
-  const since = now - SEARCH_WINDOW_SECONDS;
-  const until = now - MIN_AGE_HOURS * 3600;
-
-  // 対象期間の全ストーリーは 1000 件を超えるので、ポイントとコメント数も Algolia 側で絞る。
-  // points/num_comments を含むクエリが HTTP 400 になり、一時期クライアント側で絞っていたことがある。
+  // points や num_comments で絞るクエリが HTTP 400 になり、一時期クライアント側で絞っていたことがある。
   // その後ドキュメント https://hn.algolia.com/api どおり使えるように戻ったので、サーバー側で絞る形に戻した。
   const numericFilters = encodeURIComponent(
-    [
-      `created_at_i>=${since}`,
-      `created_at_i<=${until}`,
-      `points>=${VELOCITY_THRESHOLD}`,
-      `num_comments>=${MIN_COMMENTS}`,
-    ].join(","),
+    candidateNumericFilters(now).join(","),
   );
   const resp = await fetch(
     `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&hitsPerPage=${MAX_HITS_PER_PAGE}`,
