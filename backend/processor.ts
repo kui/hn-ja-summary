@@ -6,6 +6,7 @@ import {
 } from "@hn-feed/shared/hn";
 import { stripHtml } from "@hn-feed/shared/html";
 import type { FeedItem } from "@hn-feed/shared/feed";
+import { SummaryFormatError } from "@hn-feed/shared/summary";
 import type { ArticleInput } from "./article";
 import { fetchArticleContent } from "./article";
 import { GeminiUnavailableError, generateSummary, MODEL } from "./gemini";
@@ -14,8 +15,8 @@ import { setCompleted, setError, setSkipped } from "./state";
 // 要約に含めるコメント最大数
 const MAX_COMMENTS = 100;
 
-// Gemini が一時的に使えないときの再試行間隔。Flex の容量不足は数分〜十数分続きうるので
-// 1 分から倍々に延ばす。回数の上限は wrangler.toml の max_retries。
+// Gemini が一時的に使えないときや、出力の形式が不正だったときの再試行間隔。
+// Flex の容量不足は数分〜十数分続きうるので 1 分から倍々に延ばす。回数の上限は wrangler.toml の max_retries。
 const RETRY_BASE_DELAY_SECONDS = 60;
 
 function retryDelaySeconds(attempts: number): number {
@@ -173,10 +174,13 @@ export async function queue(
       await processItem(itemId, env);
       message.ack();
     } catch (err) {
-      if (err instanceof GeminiUnavailableError) {
+      if (
+        err instanceof GeminiUnavailableError ||
+        err instanceof SummaryFormatError
+      ) {
         const delaySeconds = retryDelaySeconds(message.attempts);
         console.warn(
-          `${err.message} for ${itemId} (attempt ${message.attempts}), retrying in ${delaySeconds}s`,
+          `${String(err)} for ${itemId} (attempt ${message.attempts}), retrying in ${delaySeconds}s`,
         );
         message.retry({ delaySeconds });
       } else {

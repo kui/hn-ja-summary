@@ -16,14 +16,18 @@ const ALGOLIA_ITEM = {
   children: [],
 };
 
-function mockFetch(geminiStatus: number) {
+function mockFetch(gemini: () => Response) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url.startsWith("https://hn.algolia.com/")) {
       return Response.json(ALGOLIA_ITEM);
     }
-    return new Response("error", { status: geminiStatus });
+    return gemini();
   });
+}
+
+function geminiStatus(status: number) {
+  return () => new Response("error", { status });
 }
 
 function makeMessage(attempts: number) {
@@ -72,7 +76,7 @@ describe("queue", () => {
   ])(
     "Gemini が %i を返したら attempts=%i で %i 秒後に再試行する",
     async (status, attempts, delaySeconds) => {
-      mockFetch(status);
+      mockFetch(geminiStatus(status));
       vi.spyOn(console, "warn").mockImplementation(() => {});
       const message = await runQueue(attempts);
       expect(message.retry).toHaveBeenCalledWith({ delaySeconds });
@@ -81,8 +85,23 @@ describe("queue", () => {
     },
   );
 
+  it("出力の形式が不正なら再試行する", async () => {
+    mockFetch(() =>
+      Response.json({
+        candidates: [
+          { content: { parts: [{ text: "{" }] }, finishReason: "STOP" },
+        ],
+      }),
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const message = await runQueue(1);
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 60 });
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(await itemState()).toBeNull();
+  });
+
   it("一時的でないエラーは再試行せず ack する", async () => {
-    mockFetch(400);
+    mockFetch(geminiStatus(400));
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const message = await runQueue(1);
     expect(message.retry).not.toHaveBeenCalled();

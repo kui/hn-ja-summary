@@ -4,19 +4,17 @@ import {
   SummaryFormatError,
   validateSummaryDoc,
 } from "@hn-feed/shared/summary";
-import { Temporal } from "temporal-polyfill";
 import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
 export const MODEL = "gemini-3.5-flash-lite";
-const MAX_ATTEMPTS = 2;
 // Flex はキュー待ちで数分かかる（目安 1〜15 分）。公式は 10 分以上のクライアント側タイムアウトを推奨。
-// consumer の wall time 上限 15 分から HN・記事取得の時間を残し、
-// フォーマット再生成を含む Gemini 呼び出し全体をこの時間に収める。
+// consumer の wall time 上限 15 分から HN・記事取得の時間を残す。
+// 失敗したらこの実行内では作り直さず、Queue の再試行に任せる。
 const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
 // サーバー側の打ち切り（X-Server-Timeout）をクライアント側より少し早めにし、
 // 504 を受け取って再試行に回せるようにする。
-const SERVER_TIMEOUT_MARGIN_MS = 30 * 1000;
+const SERVER_TIMEOUT_SECONDS = GEMINI_TIMEOUT_MS / 1000 - 30;
 
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
@@ -182,56 +180,36 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
 
   const schema = responseSchema(article.status === "ok");
 
-  const deadlineMs =
-    Temporal.Now.instant().epochMilliseconds + GEMINI_TIMEOUT_MS;
-  let lastFormatError: SummaryFormatError | null = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const data = await requestSummary(apiKey, prompt, schema, deadlineMs);
-    const candidate = data.candidates?.[0];
-    if (candidate?.finishReason !== "STOP") {
-      throw new Error(
-        `Gemini output incomplete or blocked: finishReason=${candidate?.finishReason ?? "no candidate"}`,
-      );
-    }
-    const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
-    try {
-      const parsed = parseSummaryDoc(text.trim());
-      await validateSummaryDoc(parsed);
-      const articleHtml =
-        article.status === "ok"
-          ? parsed.articleHtml
-          : missingArticleNoticeHtml(article.status);
-      if (articleHtml === undefined) {
-        throw new SummaryFormatError("articleHtml is missing");
-      }
-      const doc = { ...parsed, articleHtml };
-      return {
-        summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
-        inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-        outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
-      };
-    } catch (err) {
-      if (!(err instanceof SummaryFormatError)) throw err;
-      lastFormatError = err;
-      console.warn(
-        `Summary format error for ${itemId} (attempt ${attempt}/${MAX_ATTEMPTS}): ${err.message}`,
-      );
-    }
+  const data = await requestSummary(apiKey, prompt, schema);
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason !== "STOP") {
+    throw new Error(
+      `Gemini output incomplete or blocked: finishReason=${candidate?.finishReason ?? "no candidate"}`,
+    );
   }
-  throw lastFormatError;
+  const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
+  const parsed = parseSummaryDoc(text.trim());
+  await validateSummaryDoc(parsed);
+  const articleHtml =
+    article.status === "ok"
+      ? parsed.articleHtml
+      : missingArticleNoticeHtml(article.status);
+  if (articleHtml === undefined) {
+    throw new SummaryFormatError("articleHtml is missing");
+  }
+  const doc = { ...parsed, articleHtml };
+  return {
+    summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
+    inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+  };
 }
 
 async function requestSummary(
   apiKey: string,
   prompt: string,
   schema: object,
-  deadlineMs: number,
 ): Promise<GeminiResponse> {
-  const remainingMs = deadlineMs - Temporal.Now.instant().epochMilliseconds;
-  const serverTimeoutSeconds = Math.max(
-    1,
-    Math.floor((remainingMs - SERVER_TIMEOUT_MARGIN_MS) / 1000),
-  );
   let resp: Response;
   let body: string;
   try {
@@ -239,7 +217,7 @@ async function requestSummary(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Server-Timeout": String(serverTimeoutSeconds),
+        "X-Server-Timeout": String(SERVER_TIMEOUT_SECONDS),
       },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -251,7 +229,7 @@ async function requestSummary(
           responseSchema: schema,
         },
       }),
-      signal: AbortSignal.timeout(Math.max(1, remainingMs)),
+      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     });
     body = await resp.text();
   } catch (err) {

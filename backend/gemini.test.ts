@@ -1,3 +1,4 @@
+import { SummaryFormatError } from "@hn-feed/shared/summary";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GeminiUnavailableError, generateSummary, MODEL } from "./gemini.ts";
 
@@ -65,28 +66,8 @@ describe("generateSummary", () => {
       service_tier: "flex",
     });
     // クライアント側の 12 分より前にサーバーが打ち切るよう、余裕を引いた秒数を送る
-    const serverTimeout = Number(
-      new Headers(init?.headers).get("X-Server-Timeout"),
-    );
-    expect(serverTimeout).toBeGreaterThan(600);
-    expect(serverTimeout).toBeLessThan(12 * 60);
+    expect(new Headers(init?.headers).get("X-Server-Timeout")).toBe("690");
     expect(init?.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it("形式不正なら同じ期限の中で 1 回だけ作り直す", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(geminiOk({ text: "{" }))
-      .mockResolvedValueOnce(geminiOk());
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    await summarize();
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const timeouts = fetchMock.mock.calls.map(([, init]) =>
-      Number(new Headers(init?.headers).get("X-Server-Timeout")),
-    );
-    expect(timeouts[1]).toBeLessThanOrEqual(timeouts[0]!);
   });
 
   it.each([408, 429, 500, 502, 503, 504])(
@@ -98,14 +79,6 @@ describe("generateSummary", () => {
       await expect(summarize()).rejects.toThrow(GeminiUnavailableError);
     },
   );
-
-  it("作り直しの呼び出しで起きた一時的なエラーも GeminiUnavailableError になる", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(geminiOk({ text: "{" }))
-      .mockResolvedValueOnce(new Response("busy", { status: 503 }));
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(summarize()).rejects.toThrow(GeminiUnavailableError);
-  });
 
   it.each([
     ["タイムアウト", new DOMException("timed out", "TimeoutError")],
@@ -123,6 +96,14 @@ describe("generateSummary", () => {
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body));
     await expect(summarize()).rejects.toThrow(GeminiUnavailableError);
+  });
+
+  it("形式不正ならその場で作り直さず SummaryFormatError を投げる", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(geminiOk({ text: "{" }));
+    await expect(summarize()).rejects.toThrow(SummaryFormatError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("その他のエラーステータスは一時的なエラーとして扱わない", async () => {
