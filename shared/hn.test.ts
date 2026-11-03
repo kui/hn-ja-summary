@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
 import { fetchCandidateStories, flattenTopComments } from "./hn.ts";
 import type { AlgoliaComment } from "./hn.ts";
 
@@ -158,6 +159,7 @@ describe("flattenTopComments", () => {
 describe("fetchCandidateStories", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   function hit(objectID: string) {
@@ -176,20 +178,29 @@ describe("fetchCandidateStories", () => {
   function mockSearch(body: unknown, status = 200) {
     return vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response(JSON.stringify(body), { status }));
+      .mockImplementation(
+        async () => new Response(JSON.stringify(body), { status }),
+      );
   }
 
-  it("ポイントとコメント数の条件を Algolia に渡し、1 リクエストで取得する", async () => {
+  it("24 時間前から MIN_AGE_HOURS 前までの条件を満たす記事を 1 リクエストで取得する", async () => {
+    const now = 1_800_000_000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now * 1000);
     const fetchMock = mockSearch({ hits: [hit("1")], nbHits: 1 });
     await fetchCandidateStories();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const url = new URL(String(fetchMock.mock.calls[0][0]));
     expect(url.searchParams.get("hitsPerPage")).toBe("1000");
-    const filters = url.searchParams.get("numericFilters")!.split(",");
-    expect(filters).toContain("points>=20");
-    expect(filters).toContain("num_comments>=40");
-    expect(filters.filter((f) => f.startsWith("created_at_i"))).toHaveLength(2);
+    expect(url.searchParams.get("numericFilters")!.split(",").sort()).toEqual(
+      [
+        `created_at_i>=${now - 24 * 3600}`,
+        `created_at_i<=${now - MIN_AGE_HOURS * 3600}`,
+        `points>=${VELOCITY_THRESHOLD}`,
+        `num_comments>=${MIN_COMMENTS}`,
+      ].sort(),
+    );
   });
 
   it("ヒットを HNItem に変換して返す", async () => {
@@ -211,9 +222,7 @@ describe("fetchCandidateStories", () => {
     await fetchCandidateStories();
     expect(warn).not.toHaveBeenCalled();
 
-    vi.mocked(globalThis.fetch).mockResolvedValue(
-      new Response(JSON.stringify({ hits: [hit("1")], nbHits: 1001 })),
-    );
+    mockSearch({ hits: [hit("1")], nbHits: 1001 });
     await fetchCandidateStories();
     expect(warn).toHaveBeenCalledTimes(1);
   });

@@ -90,8 +90,8 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
   const until = now - MIN_AGE_HOURS * 3600;
 
   // 対象期間の全ストーリーは 1000 件を超えるので、ポイントとコメント数も Algolia 側で絞る。
-  // 2026-06 には points/num_comments を含むクエリが HTTP 400 になり、一時期クライアント側で絞っていた（2e0cd4b）。
-  // 2026-11 時点ではドキュメント https://hn.algolia.com/api どおり使えることを確認している。
+  // points/num_comments を含むクエリが HTTP 400 になり、一時期クライアント側で絞っていたことがある。
+  // その後ドキュメント https://hn.algolia.com/api どおり使えるように戻ったので、サーバー側で絞る形に戻した。
   const numericFilters = encodeURIComponent(
     [
       `created_at_i>=${since}`,
