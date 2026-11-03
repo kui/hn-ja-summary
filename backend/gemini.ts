@@ -7,8 +7,14 @@ import {
 import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
-export const MODEL = "gemini-3.1-flash-lite";
-const MAX_ATTEMPTS = 2;
+export const MODEL = "gemini-3.5-flash-lite";
+// Flex はキュー待ちで数分かかる（目安 1〜15 分）。公式は 10 分以上のクライアント側タイムアウトを推奨。
+// consumer の wall time 上限 15 分から HN・記事取得の時間を残す。
+// 失敗したらこの実行内では作り直さず、Queue の再試行に任せる。
+const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
+// サーバー側の打ち切り（X-Server-Timeout）をクライアント側より少し早めにし、
+// 504 を受け取って再試行に回せるようにする。
+const SERVER_TIMEOUT_SECONDS = GEMINI_TIMEOUT_MS / 1000 - 30;
 
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
@@ -74,11 +80,19 @@ function responseSchema(hasArticle: boolean) {
   };
 }
 
-export class GeminiQuotaError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "GeminiQuotaError";
+// 容量不足・レート制限・タイムアウトなど、時間を置けば通る見込みのある失敗。
+// Flex は容量不足でも Standard へ自動で切り替わらないため、呼び出し側で遅延付き再試行する。
+export class GeminiUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "GeminiUnavailableError";
   }
+}
+
+// 公式の Troubleshooting で再試行の対象とされているもの（429・408・5xx）。
+// Flex の容量不足は 503、X-Server-Timeout 超過は 504 で返る。
+function isTransientStatus(status: number): boolean {
+  return status === 429 || status === 408 || status >= 500;
 }
 
 interface GeminiResponse {
@@ -90,6 +104,7 @@ interface GeminiResponse {
     promptTokenCount: number;
     candidatesTokenCount: number;
     totalTokenCount: number;
+    serviceTier?: string;
   };
 }
 
@@ -165,41 +180,29 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
 
   const schema = responseSchema(article.status === "ok");
 
-  let lastFormatError: SummaryFormatError | null = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const data = await requestSummary(apiKey, prompt, schema);
-    const candidate = data.candidates?.[0];
-    if (candidate?.finishReason !== "STOP") {
-      throw new Error(
-        `Gemini output incomplete or blocked: finishReason=${candidate?.finishReason ?? "no candidate"}`,
-      );
-    }
-    const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
-    try {
-      const parsed = parseSummaryDoc(text.trim());
-      await validateSummaryDoc(parsed);
-      const articleHtml =
-        article.status === "ok"
-          ? parsed.articleHtml
-          : missingArticleNoticeHtml(article.status);
-      if (articleHtml === undefined) {
-        throw new SummaryFormatError("articleHtml is missing");
-      }
-      const doc = { ...parsed, articleHtml };
-      return {
-        summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
-        inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-        outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
-      };
-    } catch (err) {
-      if (!(err instanceof SummaryFormatError)) throw err;
-      lastFormatError = err;
-      console.warn(
-        `Summary format error for ${itemId} (attempt ${attempt}/${MAX_ATTEMPTS}): ${err.message}`,
-      );
-    }
+  const data = await requestSummary(apiKey, prompt, schema);
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason !== "STOP") {
+    throw new Error(
+      `Gemini output incomplete or blocked: finishReason=${candidate?.finishReason ?? "no candidate"}`,
+    );
   }
-  throw lastFormatError;
+  const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
+  const parsed = parseSummaryDoc(text.trim());
+  await validateSummaryDoc(parsed);
+  const articleHtml =
+    article.status === "ok"
+      ? parsed.articleHtml
+      : missingArticleNoticeHtml(article.status);
+  if (articleHtml === undefined) {
+    throw new SummaryFormatError("articleHtml is missing");
+  }
+  const doc = { ...parsed, articleHtml };
+  return {
+    summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
+    inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+  };
 }
 
 async function requestSummary(
@@ -207,13 +210,18 @@ async function requestSummary(
   prompt: string,
   schema: object,
 ): Promise<GeminiResponse> {
-  const resp = await fetch(
-    `${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`,
-    {
+  let resp: Response;
+  let body: string;
+  try {
+    resp = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Server-Timeout": String(SERVER_TIMEOUT_SECONDS),
+      },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
+        service_tier: "flex",
         generationConfig: {
           temperature: 0.3,
           maxOutputTokens: 2048,
@@ -221,18 +229,39 @@ async function requestSummary(
           responseSchema: schema,
         },
       }),
-    },
-  );
+      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+    });
+    body = await resp.text();
+  } catch (err) {
+    // タイムアウトや接続切れ。Flex は接続を数分〜十数分保つので起きやすく、時間を置けば通る見込みがある
+    throw new GeminiUnavailableError(`Gemini request failed: ${String(err)}`, {
+      cause: err,
+    });
+  }
 
   if (!resp.ok) {
-    const body = await resp.text();
-    if (resp.status === 429) {
-      throw new GeminiQuotaError(
-        `Gemini quota exceeded: ${resp.status} ${body}`,
+    if (isTransientStatus(resp.status)) {
+      throw new GeminiUnavailableError(
+        `Gemini unavailable: ${resp.status} ${body}`,
       );
     }
     throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }
 
-  return await resp.json<GeminiResponse>();
+  const data = JSON.parse(body) as GeminiResponse;
+  logServiceTier(
+    resp.headers.get("x-gemini-service-tier"),
+    data.usageMetadata?.serviceTier,
+  );
+  return data;
+}
+
+// Flex の指定が効かず Standard の料金で処理されたら気付けるよう、Flex 以外は警告にする
+function logServiceTier(header: string | null, usageMetadata?: string): void {
+  const line = `  [gemini] service tier: header=${header ?? "(none)"} usageMetadata=${usageMetadata ?? "(none)"}`;
+  if ([header, usageMetadata].some((t) => t?.toLowerCase() === "flex")) {
+    console.log(line);
+  } else {
+    console.warn(`${line} (not flex)`);
+  }
 }
