@@ -66,9 +66,12 @@ describe("generateSummary", () => {
     expect(new URL(String(url)).search).toBe("");
     expect(String(url)).not.toContain("test-key");
     expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("test-key");
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      service_tier: "flex",
-    });
+    const requestBody = JSON.parse(String(init?.body));
+    expect(requestBody).toMatchObject({ service_tier: "flex" });
+    // 非推奨のサンプリングパラメータは送らない
+    for (const key of ["temperature", "topP", "topK"]) {
+      expect(requestBody.generationConfig).not.toHaveProperty(key);
+    }
     // クライアント側の 12 分より前にサーバーが打ち切るよう、余裕を引いた秒数を送る
     expect(new Headers(init?.headers).get("X-Server-Timeout")).toBe("690");
     expect(init?.signal).toBeInstanceOf(AbortSignal);
