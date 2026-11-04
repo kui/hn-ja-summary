@@ -192,11 +192,11 @@ function generateRSS(
       const itemPageUrl = `https://${workersDomain}/items/${item.id}`;
       return `
   <item>
-    <title><![CDATA[${item.title}]]></title>
+    <title>${cdata(item.title)}</title>
     <link>${itemPageUrl}</link>
     <guid isPermaLink="true">${itemPageUrl}</guid>
     <pubDate>${toRFC822(item.createdAt)}</pubDate>
-    <description><![CDATA[${item.summaryHtml}<p style="color:#888;font-size:.85em">要約モデル: ${item.model}</p>]]></description>
+    <description>${cdata(`${item.summaryHtml}<p style="color:#888;font-size:.85em">要約モデル: ${item.model}</p>`)}</description>
   </item>`;
     })
     .join("\n");
@@ -213,6 +213,11 @@ function generateRSS(
 ${itemsXml}
   </channel>
 </rss>`;
+}
+
+// CDATA は `]]>` で終わるので、中身の `]]>` は CDATA を区切り直して表す
+function cdata(s: string): string {
+  return `<![CDATA[${s.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
 }
 
 function toRFC822(epochMs: number): string {
@@ -352,15 +357,15 @@ function renderItemPage(
   <p class="meta">
     HN投稿日時: ${fmtDate(item.hnPostedAt)} ｜
     処理日時: ${fmtDate(item.createdAt)} ｜
-    <a href="${item.articleUrl}" target="_blank" rel="noopener">元記事</a> ｜
-    <a href="${item.hnUrl}" target="_blank" rel="noopener">HNディスカッション</a>
+    <a href="${escapeHtml(item.articleUrl)}" target="_blank" rel="noopener">元記事</a> ｜
+    <a href="${escapeHtml(item.hnUrl)}" target="_blank" rel="noopener">HNディスカッション</a>
   </p>
   <article>
     ${item.summaryHtml}
   </article>
   <dl class="meta-grid">
-    <dt>元記事</dt><dd><a href="${item.articleUrl}" target="_blank" rel="noopener">${escapeHtml(item.articleUrl)}</a></dd>
-    <dt>HNディスカッション</dt><dd><a href="${item.hnUrl}" target="_blank" rel="noopener">${escapeHtml(item.hnUrl)}</a></dd>
+    <dt>元記事</dt><dd><a href="${escapeHtml(item.articleUrl)}" target="_blank" rel="noopener">${escapeHtml(item.articleUrl)}</a></dd>
+    <dt>HNディスカッション</dt><dd><a href="${escapeHtml(item.hnUrl)}" target="_blank" rel="noopener">${escapeHtml(item.hnUrl)}</a></dd>
     <dt>HN投稿日時</dt><dd>${fmtDate(item.hnPostedAt)}</dd>
     <dt>ポイント</dt><dd>${fmtVal(item.points)}</dd>
     <dt>コメント数</dt><dd>${fmtVal(item.commentCount)}</dd>
