@@ -39,7 +39,7 @@ admin-worker (fetch handler, Cloudflare Access で保護)
 ## ディレクトリ構成
 
 ```
-shared/      共通型定義・HN API クライアント・フィルタ・要約 HTML の検証と組み立て
+shared/      共通型定義・HN API クライアント・フィルタ・処理状態の更新・要約 HTML の検証と組み立て
 backend/     scheduled (poller) + queue (processor) を担う Worker
 feed/        RSS 配信・要約 HTML ページ配信 Worker
 admin/       手動キュー投入 UI Worker（Cloudflare Access で保護）

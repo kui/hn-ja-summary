@@ -6,11 +6,11 @@ import {
 } from "@hn-feed/shared/hn";
 import { stripHtml } from "@hn-feed/shared/html";
 import type { FeedItem } from "@hn-feed/shared/feed";
+import { setCompleted, setError, setSkipped } from "@hn-feed/shared/state";
 import { SummaryFormatError } from "@hn-feed/shared/summary";
 import type { ArticleInput } from "./article";
 import { fetchArticleContent } from "./article";
 import { GeminiUnavailableError, generateSummary, MODEL } from "./gemini";
-import { setCompleted, setError, setSkipped } from "./state";
 
 // 要約に含めるコメント最大数
 const MAX_COMMENTS = 100;
