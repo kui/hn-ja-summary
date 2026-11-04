@@ -7,9 +7,13 @@ on:
   pull_request:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
@@ -18,3 +22,6 @@ jobs:
       - run: npm run ts:check
       - run: npm run lint:check
       - run: npm test
+      # マイグレーションの SQL が本番 DB で初めて実行されないよう、先にローカルの D1 で流す
+      - run: npx wrangler d1 migrations apply hn-feed --local
+        working-directory: feed

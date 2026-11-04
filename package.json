@@ -22,7 +22,7 @@
     "ts:check:shared": "npm run ts:check -w shared",
     "ts:check:scripts": "tsc -p scripts/tsconfig.json --noEmit",
     "lint": "eslint --fix",
-    "lint:check": "eslint",
+    "lint:check": "eslint && actionlint",
     "test": "vitest run",
     "fixAll": "npm run fmt && npm run lint",
     "checkAll": "npm run fmt:check && npm run lint:check && npm run ts:check && npm test"

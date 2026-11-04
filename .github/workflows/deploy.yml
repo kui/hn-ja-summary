@@ -4,7 +4,10 @@ on:
   push:
     branches: [production]
 
-# 連続 push で古いコードが後からデプロイされないよう、デプロイは 1 本ずつ順に流す
+permissions:
+  contents: read
+
+# 走行中のデプロイを止めると Worker の版が混ざるので、後続は待たせて最新の push だけを流す
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -17,6 +20,7 @@ jobs:
   migrate:
     needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
@@ -29,6 +33,7 @@ jobs:
   deploy-feed:
     needs: migrate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
@@ -40,6 +45,7 @@ jobs:
   deploy-backend:
     needs: migrate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
@@ -51,6 +57,7 @@ jobs:
   deploy-admin:
     needs: migrate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
