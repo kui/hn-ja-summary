@@ -86,8 +86,8 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 export async function fetchCandidateStories(): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
   // 対象期間の全ストーリーは 1 回で取得できる件数を超えるので、Algolia 側で絞る。
-  // points や num_comments で絞るクエリが HTTP 400 になり、一時期クライアント側で絞っていたことがある。
-  // その後ドキュメント https://hn.algolia.com/api どおり使えるように戻ったので、サーバー側で絞る形に戻した。
+  // points や num_comments で絞るクエリは、ドキュメントにあるのに HTTP 400 を返す時期があった。
+  // 再発したら created_at_i だけで取得してクライアント側で絞る（実装例: 2e0cd4b）。
   const numericFilters = encodeURIComponent(
     [
       `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
