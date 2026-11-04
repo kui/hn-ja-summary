@@ -156,4 +156,3 @@ npm -w admin run dev
 - 投稿からの平均で毎時 20 ポイント以上獲得している
 
 経過時間とコメント数は Algolia の検索条件で絞り、毎時ポイントは取得後に判定する。
-閾値は [`shared/filter.ts`](shared/filter.ts) で定義している。
