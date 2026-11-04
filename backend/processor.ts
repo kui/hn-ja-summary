@@ -29,8 +29,8 @@ async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
       `INSERT INTO feed_items
         (id, created_at_ms, updated_at_ms, title, article_url, hn_url, summary_html, model,
          hn_posted_at_ms, comment_count, points, comments_used, article_chars,
-         article_fetch_method, input_tokens, output_tokens)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         article_fetch_method, input_tokens, output_tokens, thoughts_tokens)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         updated_at_ms = excluded.updated_at_ms,
         title = excluded.title,
@@ -45,7 +45,8 @@ async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
         article_chars = excluded.article_chars,
         article_fetch_method = excluded.article_fetch_method,
         input_tokens = excluded.input_tokens,
-        output_tokens = excluded.output_tokens`,
+        output_tokens = excluded.output_tokens,
+        thoughts_tokens = excluded.thoughts_tokens`,
     )
     .bind(
       item.id,
@@ -64,6 +65,7 @@ async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
       item.articleFetchMethod,
       item.inputTokens,
       item.outputTokens,
+      item.thoughtsTokens,
     )
     .run();
 }
@@ -129,14 +131,15 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   console.log(`Got ${comments.length} comments`);
 
   console.log("Generating summary with Gemini...");
-  const { summaryHtml, inputTokens, outputTokens } = await generateSummary(
-    env.GEMINI_API_KEY,
-    itemId,
-    title,
-    articleUrl,
-    article,
-    comments,
-  );
+  const { summaryHtml, inputTokens, outputTokens, thoughtsTokens } =
+    await generateSummary(
+      env.GEMINI_API_KEY,
+      itemId,
+      title,
+      articleUrl,
+      article,
+      comments,
+    );
 
   const now = Temporal.Now.instant().epochMilliseconds;
   const feedItem: FeedItem = {
@@ -156,6 +159,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
     articleFetchMethod,
     inputTokens,
     outputTokens,
+    thoughtsTokens,
   };
 
   console.log("Writing to D1...");

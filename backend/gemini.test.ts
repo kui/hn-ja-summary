@@ -13,18 +13,23 @@ function geminiOk({
   text = JSON.stringify(VALID_DOC),
   headers = {},
   serviceTier = "flex",
+  finishReason = "STOP",
+  thoughtsTokenCount,
 }: {
   text?: string;
   headers?: Record<string, string>;
   serviceTier?: string;
+  finishReason?: string;
+  thoughtsTokenCount?: number;
 } = {}): Response {
   return Response.json(
     {
-      candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }],
+      candidates: [{ content: { parts: [{ text }] }, finishReason }],
       usageMetadata: {
         promptTokenCount: 100,
         candidatesTokenCount: 50,
-        totalTokenCount: 150,
+        thoughtsTokenCount,
+        totalTokenCount: 150 + (thoughtsTokenCount ?? 0),
         serviceTier,
       },
     },
@@ -72,6 +77,11 @@ describe("generateSummary", () => {
     for (const key of ["temperature", "topP", "topK"]) {
       expect(requestBody.generationConfig).not.toHaveProperty(key);
     }
+    // 思考量はモデルの既定に任せず明示し、上限は思考の分の余裕を持たせる
+    expect(requestBody.generationConfig).toMatchObject({
+      thinkingConfig: { thinkingLevel: "MINIMAL" },
+      maxOutputTokens: 8192,
+    });
     // クライアント側の 12 分より前にサーバーが打ち切るよう、余裕を引いた秒数を送る
     expect(new Headers(init?.headers).get("X-Server-Timeout")).toBe("690");
     expect(init?.signal).toBeInstanceOf(AbortSignal);
@@ -111,6 +121,52 @@ describe("generateSummary", () => {
       .mockResolvedValue(geminiOk({ text: "{" }));
     await expect(summarize()).rejects.toThrow(SummaryFormatError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("思考トークンは出力トークンと分けて返す", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      geminiOk({ thoughtsTokenCount: 30 }),
+    );
+    const result = await summarize();
+    expect(result.outputTokens).toBe(50);
+    expect(result.thoughtsTokens).toBe(30);
+  });
+
+  it("出力上限で途切れたら再試行の対象として SummaryFormatError を投げる", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      geminiOk({ text: '{"jaTitle": "途中', finishReason: "MAX_TOKENS" }),
+    );
+    await expect(summarize()).rejects.toThrow(SummaryFormatError);
+  });
+
+  it.each([
+    ["成功", { thoughtsTokenCount: 30 }, "STOP"],
+    [
+      "出力上限",
+      { finishReason: "MAX_TOKENS", thoughtsTokenCount: 30 },
+      "MAX_TOKENS",
+    ],
+    ["形式不正", { text: "{", thoughtsTokenCount: 30 }, "STOP"],
+  ])(
+    "%sのときもトークン使用量をログに出す",
+    async (_, response, finishReason) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(geminiOk(response));
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await summarize().catch(() => {});
+      expect(log).toHaveBeenCalledWith(
+        `  [gemini] usage: item=1 finishReason=${finishReason} input=100 output=50 thoughts=30`,
+      );
+    },
+  );
+
+  it("安全性フィルタなどで止まったら再試行しないエラーにする", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      geminiOk({ finishReason: "SAFETY" }),
+    );
+    const err = await summarize().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(SummaryFormatError);
+    expect(err).not.toBeInstanceOf(GeminiUnavailableError);
   });
 
   it("その他のエラーステータスは一時的なエラーとして扱わない", async () => {

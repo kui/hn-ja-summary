@@ -14,5 +14,6 @@ export interface FeedItem {
   articleFetchMethod: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  thoughtsTokens: number | null;
   updatedAt: number | null;
 }

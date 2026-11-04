@@ -85,6 +85,45 @@ describe("queue", () => {
     },
   );
 
+  it("要約できたらトークン数を出力と思考に分けて記録する", async () => {
+    const doc = {
+      jaTitle: "日本語タイトル",
+      articleHtml: "<p>記事の要約。</p>",
+      hnOverviewHtml: "<p>議論の総括。</p>",
+      topics: [{ heading: "観点1", bodyHtml: "<ul><li>要点</li></ul>" }],
+    };
+    mockFetch(() =>
+      Response.json({
+        candidates: [
+          {
+            content: { parts: [{ text: JSON.stringify(doc) }] },
+            finishReason: "STOP",
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 100,
+          candidatesTokenCount: 50,
+          thoughtsTokenCount: 30,
+          totalTokenCount: 180,
+          serviceTier: "flex",
+        },
+      }),
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const message = await runQueue(1);
+    expect(message.ack).toHaveBeenCalled();
+    const row = await env.DB.prepare(
+      "SELECT input_tokens, output_tokens, thoughts_tokens FROM feed_items WHERE id = ?",
+    )
+      .bind(ITEM_ID)
+      .first();
+    expect(row).toEqual({
+      input_tokens: 100,
+      output_tokens: 50,
+      thoughts_tokens: 30,
+    });
+  });
+
   it("出力の形式が不正なら再試行する", async () => {
     mockFetch(() =>
       Response.json({
