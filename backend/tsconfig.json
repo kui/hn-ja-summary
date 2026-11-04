@@ -3,5 +3,5 @@
   "compilerOptions": {
     "moduleResolution": "bundler"
   },
-  "exclude": ["vitest.config.ts", "**/*.test.ts"]
+  "exclude": ["vitest.config.ts", "test-setup.ts", "**/*.test.ts"]
 }

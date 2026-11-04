@@ -6,13 +6,22 @@ import {
 } from "@hn-feed/shared/hn";
 import { stripHtml } from "@hn-feed/shared/html";
 import type { FeedItem } from "@hn-feed/shared/feed";
+import { SummaryFormatError } from "@hn-feed/shared/summary";
 import type { ArticleInput } from "./article";
 import { fetchArticleContent } from "./article";
-import { GeminiQuotaError, generateSummary, MODEL } from "./gemini";
+import { GeminiUnavailableError, generateSummary, MODEL } from "./gemini";
 import { setCompleted, setError, setSkipped } from "./state";
 
 // 要約に含めるコメント最大数
 const MAX_COMMENTS = 100;
+
+// Gemini が一時的に使えないときや、出力の形式が不正だったときの再試行間隔。
+// Flex の容量不足は数分〜十数分続きうるので 1 分から倍々に延ばす。回数の上限は wrangler.toml の max_retries。
+const RETRY_BASE_DELAY_SECONDS = 60;
+
+function retryDelaySeconds(attempts: number): number {
+  return RETRY_BASE_DELAY_SECONDS * 2 ** (attempts - 1);
+}
 
 async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
   await db
@@ -165,9 +174,15 @@ export async function queue(
       await processItem(itemId, env);
       message.ack();
     } catch (err) {
-      if (err instanceof GeminiQuotaError) {
-        console.warn(`Gemini quota exceeded for ${itemId}, retrying in 60s`);
-        message.retry({ delaySeconds: 60 });
+      if (
+        err instanceof GeminiUnavailableError ||
+        err instanceof SummaryFormatError
+      ) {
+        const delaySeconds = retryDelaySeconds(message.attempts);
+        console.warn(
+          `${String(err)} for ${itemId} (attempt ${message.attempts}), retrying in ${delaySeconds}s`,
+        );
+        message.retry({ delaySeconds });
       } else {
         console.error(`Processing error for ${itemId}:`, err);
         try {
