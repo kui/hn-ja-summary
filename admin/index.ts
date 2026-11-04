@@ -1,4 +1,5 @@
 import { Temporal } from "temporal-polyfill";
+import { escapeHtml } from "@hn-feed/shared/html";
 
 const PAGE_STYLE = `
 body{max-width:720px;margin:0 auto;padding:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;color:#222;background:#fafafa}
@@ -70,7 +71,7 @@ function renderEnqueuePage(resultHtml: string, defaultValue = ""): Response {
     <p>HN item ID または URL を入力してください。</p>
     <p>
       <input type="text" name="id" placeholder="43012345 または https://news.ycombinator.com/item?id=43012345"
-        value="${defaultValue}" autofocus>
+        value="${escapeHtml(defaultValue)}" autofocus>
     </p>
     <button type="submit">キューに追加</button>
   </form>
@@ -98,7 +99,7 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
   const itemId = parseItemId(input);
   if (itemId === null) {
     return renderEnqueuePage(
-      `<div class="result error">&ldquo;${input}&rdquo; は有効な HN item ID または URL ではありません。</div>`,
+      `<div class="result error">&ldquo;${escapeHtml(input)}&rdquo; は有効な HN item ID または URL ではありません。</div>`,
       input,
     );
   }
@@ -149,8 +150,13 @@ export default {
     if (request.method === "GET" && url.pathname === "/enqueue")
       return renderEnqueuePage("", url.searchParams.get("id") ?? "");
 
-    if (request.method === "POST" && url.pathname === "/enqueue")
+    if (request.method === "POST" && url.pathname === "/enqueue") {
+      // Access の cookie だけでは送信元を保証できないので、Origin を確かめる。
+      // ブラウザは POST に必ず Origin を付けるため、ないものも拒否する
+      if (request.headers.get("Origin") !== url.origin)
+        return new Response("Forbidden", { status: 403 });
       return handleEnqueue(request, env);
+    }
 
     return new Response("Not found", { status: 404 });
   },
