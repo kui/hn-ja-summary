@@ -10,7 +10,7 @@ declare module "vitest" {
 
 const ORIGIN = "https://admin.example.com";
 // 属性値を閉じて属性や要素を差し込もうとする文字列
-const ATTACK = `"><script>alert(1)</script><input onfocus="alert(1)`;
+const ATTACK = `&"><script>alert(1)</script><input onfocus="alert(1)`;
 
 function postEnqueue(
   id: string,
@@ -90,7 +90,7 @@ describe("POST /enqueue", () => {
       injected: 0,
     });
     expect(await res.text()).toContain(
-      "&ldquo;&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;",
+      "&ldquo;&amp;&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;",
     );
   });
 

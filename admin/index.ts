@@ -151,7 +151,7 @@ export default {
       return renderEnqueuePage("", url.searchParams.get("id") ?? "");
 
     if (request.method === "POST" && url.pathname === "/enqueue") {
-      // Access の cookie は他サイトからの POST にも付くので、送信元を確かめる。
+      // Access の cookie だけでは送信元を保証できないので、Origin を確かめる。
       // ブラウザは POST に必ず Origin を付けるため、ないものも拒否する
       if (request.headers.get("Origin") !== url.origin)
         return new Response("Forbidden", { status: 403 });
