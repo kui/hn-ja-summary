@@ -97,8 +97,10 @@ npx wrangler d1 create hn-feed
 出力された `database_id` を `feed/wrangler.toml` と `backend/wrangler.toml` の
 両方に記入し、`CLOUDFLARE_D1_DATABASE_ID` を env に設定する。
 
+リポジトリのルートでマイグレーションを当てる。
+
 ```bash
-npx wrangler d1 migrations apply hn-feed --remote
+npm run db:migrate
 ```
 
 ### 4. CF Queue 作成（初回のみ）
@@ -130,16 +132,23 @@ CI → D1 マイグレーション → 3 Worker のデプロイの順に実行�
 そのためマイグレーションは、いま動いているコードと両立させる（追加するカラムは NULL 可かデフォルト付きにする）。
 カラムの削除やリネームは、コードがそのカラムを使わなくなってから別のデプロイで行う。
 
-Actions の古い run を再実行すると、その時点のコードがデプロイされる。戻したいときは `production` に新しくコミットする。
-
 手動でデプロイするときも、マイグレーションを先に当ててから Worker をデプロイする。
 
 ```bash
-(cd feed && npx wrangler d1 migrations apply hn-feed --remote)
+npm run db:migrate
 npm -w feed run deploy
 npm -w backend run deploy
 npm -w admin run deploy
 ```
+
+デプロイが途中で失敗したときは、失敗した場所に応じて次のようにする。
+
+- `ci`：何も変わっていないので、直して push する。
+- `migrate`：Worker は古いまま。途中まで当たっている可能性があるのでログを確認し、直して push する。
+- `deploy-*` の一部：残りの Worker は新しい版になっている。最新の run なら「Re-run failed jobs」で失敗したジョブだけ再実行する。新しい push のデプロイが済んでいれば何もしない。
+- すべて成功したあとに不具合が見つかったとき：修正か revert を push する。スキーマは戻らない。
+
+古い run を再実行すると、その時点のコードがデプロイされるので、最新の run 以外は再実行しない。
 
 ### 8. Inoreader で RSS 購読
 
