@@ -1,5 +1,5 @@
 import { Temporal } from "temporal-polyfill";
-import { candidateNumericFilters } from "./filter.ts";
+import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
 
 // Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
@@ -85,10 +85,15 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 
 export async function fetchCandidateStories(): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
+  // 対象期間の全ストーリーは 1 回で取得できる件数を超えるので、Algolia 側で絞る。
   // points や num_comments で絞るクエリが HTTP 400 になり、一時期クライアント側で絞っていたことがある。
   // その後ドキュメント https://hn.algolia.com/api どおり使えるように戻ったので、サーバー側で絞る形に戻した。
   const numericFilters = encodeURIComponent(
-    candidateNumericFilters(now).join(","),
+    [
+      `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
+      `created_at_i<=${now - MIN_AGE_HOURS * 3600}`,
+      `num_comments>=${MIN_COMMENTS}`,
+    ].join(","),
   );
   const resp = await fetch(
     `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&hitsPerPage=${MAX_HITS_PER_PAGE}`,
