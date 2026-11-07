@@ -132,18 +132,14 @@ function makeSubtreeCounter() {
   return count;
 }
 
-export function flattenTopComments(
+function selectComments(
   comments: AlgoliaComment[],
   max: number,
-): string[] {
-  const countSubtree = makeSubtreeCounter();
-  const bySubtreeDesc = (a: AlgoliaComment, b: AlgoliaComment) =>
-    countSubtree(b) - countSubtree(a);
-
-  // Pass 1: greedy でどのノードを含めるか選定する
-  const selected = new Set<number>();
-  // queues[n] には、返信を含めて n 件のコメントを入れ、n の大きい順に処理する。
-  // 返信の件数は親より必ず少ないので、処理中や処理済みの queues に入ることはない。
+  countSubtree: (comment: AlgoliaComment) => number,
+): Set<AlgoliaComment> {
+  const selected = new Set<AlgoliaComment>();
+  // queues[n] には、自身と子孫を合わせて n 件になるコメントを入れ、n の大きい順に処理する。
+  // 子の n は親より必ず小さいので、処理中や処理済みの queues には入らない。
   const queues: AlgoliaComment[][] = [];
   const enqueue = (node: AlgoliaComment) => {
     (queues[countSubtree(node)] ??= []).push(node);
@@ -152,13 +148,13 @@ export function flattenTopComments(
     enqueue(comment);
   }
 
-  selection: for (let size = queues.length - 1; size > 0; size--) {
+  for (let size = queues.length - 1; size > 0; size--) {
     for (const node of queues[size] ?? []) {
-      if (selected.size >= max) break selection;
+      if (selected.size >= max) return selected;
 
       const hasChildren = node.children.length > 0;
       if (hasChildren || (node.text && node.text.length >= MIN_TEXT_LENGTH)) {
-        selected.add(node.id);
+        selected.add(node);
       }
 
       for (const child of node.children) {
@@ -166,12 +162,24 @@ export function flattenTopComments(
       }
     }
   }
+  return selected;
+}
 
-  // Pass 2: 元のツリー構造を DFS して選定ノードを正しい深さで出力する
+export function flattenTopComments(
+  comments: AlgoliaComment[],
+  max: number,
+): string[] {
+  const countSubtree = makeSubtreeCounter();
+  const bySubtreeDesc = (a: AlgoliaComment, b: AlgoliaComment) =>
+    countSubtree(b) - countSubtree(a);
+
+  const selected = selectComments(comments, max, countSubtree);
+
+  // 元のツリー構造を DFS して選定ノードを正しい深さで出力する
   const result: string[] = [];
 
   function visit(node: AlgoliaComment, depth: number): void {
-    if (selected.has(node.id)) {
+    if (selected.has(node)) {
       const author = node.author ?? "-";
       result.push(`${"  ".repeat(depth)}[${author}]: ${node.text ?? "-"}`);
     }
