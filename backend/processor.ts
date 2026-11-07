@@ -96,7 +96,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
     console.log(`Fetching article: ${algoliaItem.url}`);
     const urlArticle = await fetchArticleContent(
       algoliaItem.url,
-      env.JINA_API_KEY,
+      env.FIRECRAWL_API_KEY,
     );
     console.log(`  [article] url status: ${urlArticle.status}`);
     if (postText) {
