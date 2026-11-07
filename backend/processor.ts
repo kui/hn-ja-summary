@@ -97,6 +97,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
     const urlArticle = await fetchArticleContent(
       algoliaItem.url,
       env.FIRECRAWL_API_KEY,
+      hnPostedAt,
     );
     console.log(`  [article] url status: ${urlArticle.status}`);
     if (postText) {

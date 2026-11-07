@@ -1,17 +1,54 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Temporal } from "temporal-polyfill";
 import { fetchArticleContent } from "./article.ts";
 
-function htmlResponse(body: string, status = 200): Response {
+const API_KEY = "fc-key";
+const POSTED_AT = Temporal.Instant.from(
+  "2024-01-02T00:00:00Z",
+).epochMilliseconds;
+const BODY = "本文です。".repeat(50);
+
+function htmlResponse(
+  body: string,
+  status = 200,
+  contentType = "text/html; charset=utf-8",
+): Response {
   return new Response(body, {
     status,
-    headers: { "content-type": "text/html; charset=utf-8" },
+    headers: { "content-type": contentType },
   });
 }
 
-function mockFetch(handler: (url: string) => Response) {
+function firecrawlOk(statusCode = 200): Response {
+  return Response.json({
+    success: true,
+    data: { markdown: BODY, metadata: { statusCode } },
+  });
+}
+
+function waybackAvailable(timestamp: string): Response {
+  return Response.json({
+    archived_snapshots: {
+      closest: {
+        status: "200",
+        available: true,
+        url: `http://web.archive.org/web/${timestamp}/https://example.com/post`,
+        timestamp,
+      },
+    },
+  });
+}
+
+type Handler = (url: string, init?: RequestInit) => Response;
+
+function mockFetch(handler: Handler) {
   return vi
     .spyOn(globalThis, "fetch")
-    .mockImplementation(async (input) => handler(String(input)));
+    .mockImplementation(async (input, init) => handler(String(input), init));
+}
+
+function fetchArticle(url = "https://example.com/post") {
+  return fetchArticleContent(url, API_KEY, POSTED_AT);
 }
 
 afterEach(() => {
@@ -19,94 +56,206 @@ afterEach(() => {
 });
 
 describe("fetchArticleContent", () => {
-  it("raw で header/nav/footer と script を除去して本文を返す", async () => {
-    const bodyText = "本文です。".repeat(50);
+  it("raw で header/nav/footer、role 付きの枠、script を除去して本文を返す", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
         return htmlResponse(
-          `<html><head><title>Example</title></head><body><header>site header</header><nav>site nav</nav><main>${bodyText}</main><footer>site footer</footer><script>evil()</script></body></html>`,
+          `<html><head><title>Example</title></head><body><header>site header</header><nav>site nav</nav><div role="banner">role banner</div><div role="navigation">role nav</div><main>${BODY}</main><div role="complementary">role side</div><div role="contentinfo">role info</div><footer>site footer</footer><script>evil()</script></body></html>`,
         );
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
 
-    const result = await fetchArticleContent("https://example.com/post");
+    const result = await fetchArticle();
 
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     expect(result.method).toBe("raw");
     expect(result.content).toContain("本文です。");
-    expect(result.content).not.toContain("site header");
-    expect(result.content).not.toContain("site nav");
-    expect(result.content).not.toContain("site footer");
+    for (const removed of [
+      "site header",
+      "site nav",
+      "site footer",
+      "role banner",
+      "role nav",
+      "role side",
+      "role info",
+      "evil()",
+    ]) {
+      expect(result.content).not.toContain(removed);
+    }
   });
 
-  it("raw が非 2xx なら status と host を warn に出す", async () => {
+  it("raw は application/xhtml+xml も本文として読む", async () => {
     mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><main>${BODY}</main></body></html>`,
+          200,
+          "application/xhtml+xml",
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.method).toBe("raw");
+  });
+
+  it("raw は text/plain をそのまま本文として読む", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(BODY, 200, "text/plain; charset=utf-8");
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(BODY);
+  });
+
+  it("長い本文は切り詰めて、その旨を書き添える", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse("あ".repeat(20_000), 200, "text/plain");
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.content.startsWith("あ".repeat(15_000))).toBe(true);
+    expect(result.content).not.toContain("あ".repeat(15_001));
+    expect(result.content).toContain("本文はここで切り詰められている");
+  });
+
+  it("raw が非 2xx なら status と host を warn に出し、キー付きで firecrawl を呼ぶ", async () => {
+    let authorization: string | null = null;
+    mockFetch((url, init) => {
       if (url.startsWith("https://example.com/")) {
         return htmlResponse("not found", 404);
       }
       if (url.startsWith("https://api.firecrawl.dev/")) {
-        return Response.json(
-          {
-            success: true,
-            data: {
-              markdown: "本文です。".repeat(50),
-              metadata: { statusCode: 200 },
-            },
-          },
-          { status: 200 },
-        );
+        authorization = new Headers(init?.headers).get("Authorization");
+        return firecrawlOk();
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const result = await fetchArticleContent(
-      "https://example.com/post",
-      "fc-key",
-    );
+    const result = await fetchArticle();
 
-    expect(result.status).toBe("ok");
     expect(result.status === "ok" && result.method).toBe("firecrawl");
+    expect(authorization).toBe(`Bearer ${API_KEY}`);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("raw fetch returned 404 for example.com"),
     );
   });
 
-  it("raw と firecrawl が落ちたら wayback を使う", async () => {
+  it("firecrawl が success でも元ページが 2xx 以外なら使わない", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse("blocked", 403);
+      }
+      if (url.startsWith("https://api.firecrawl.dev/")) {
+        return firecrawlOk(403);
+      }
+      if (url.startsWith("https://archive.org/wayback/available")) {
+        return Response.json({ archived_snapshots: {} });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await fetchArticle();
+
+    expect(result.status).toBe("fetch_failed");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("firecrawl page status 403 for example.com"),
+    );
+  });
+
+  it("firecrawl の非 2xx は本文の error もログに出す", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
         return htmlResponse("blocked", 403);
       }
       if (url.startsWith("https://api.firecrawl.dev/")) {
         return Response.json(
-          { success: false, error: "Payment required" },
+          { success: false, error: "Insufficient credits" },
           { status: 402 },
         );
       }
       if (url.startsWith("https://archive.org/wayback/available")) {
-        return Response.json({
-          archived_snapshots: {
-            closest: {
-              available: true,
-              url: "https://web.archive.org/web/20240101120000/https://example.com/post",
-            },
-          },
-        });
+        return Response.json({ archived_snapshots: {} });
       }
-      if (url.startsWith("https://web.archive.org/web/20240101120000id_/")) {
-        return htmlResponse(
-          `<html><body><main>${"本文です。".repeat(50)}</main></body></html>`,
-        );
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await fetchArticle();
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /firecrawl returned 402 for example\.com: .*Insufficient credits/,
+      ),
+    );
+  });
+
+  it("raw と firecrawl が落ちたら、投稿日時に近い wayback のスナップショットを使う", async () => {
+    const requested: string[] = [];
+    mockFetch((url) => {
+      requested.push(url);
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse("blocked", 403);
+      }
+      if (url.startsWith("https://api.firecrawl.dev/")) {
+        return htmlResponse("rate limited", 429);
+      }
+      if (url.startsWith("https://archive.org/wayback/available")) {
+        return waybackAvailable("20240101120000");
+      }
+      if (
+        url ===
+        "https://web.archive.org/web/20240101120000id_/https://example.com/post"
+      ) {
+        return htmlResponse(`<html><body><main>${BODY}</main></body></html>`);
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
 
-    const result = await fetchArticleContent("https://example.com/post");
+    const result = await fetchArticle();
 
-    expect(result.status).toBe("ok");
     expect(result.status === "ok" && result.method).toBe("wayback");
+    expect(
+      requested.find((u) => u.startsWith("https://archive.org/")),
+    ).toContain("timestamp=20240102000000");
+  });
+
+  it("wayback のスナップショットが投稿日時から離れすぎていたら使わない", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse("blocked", 403);
+      }
+      if (url.startsWith("https://api.firecrawl.dev/")) {
+        return htmlResponse("rate limited", 429);
+      }
+      if (url.startsWith("https://archive.org/wayback/available")) {
+        return waybackAvailable("20190101000000");
+      }
+      if (url.startsWith("https://web.archive.org/web/20190101000000id_/")) {
+        return htmlResponse(`<html><body><main>${BODY}</main></body></html>`);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status).toBe("fetch_failed");
   });
 
   it("すべての手段が落ちたら fetch_failed を返す", async () => {
@@ -120,27 +269,48 @@ describe("fetchArticleContent", () => {
       return htmlResponse("no", 500);
     });
 
-    const result = await fetchArticleContent("https://example.com/post");
+    const result = await fetchArticle();
 
     expect(result.status).toBe("fetch_failed");
   });
 
-  it("既知のペイウォールは fetch_skipped を返す", async () => {
-    const result = await fetchArticleContent("https://www.nytimes.com/post");
+  it.each([
+    "https://www.nytimes.com/post",
+    "https://cooking.nytimes.com/recipe",
+    "https://www.bloomberg.com/news",
+  ])("既知のペイウォール %s は fetch_skipped を返す", async (url) => {
+    const result = await fetchArticle(url);
 
     expect(result.status).toBe("fetch_skipped");
   });
 
-  it("YouTube は本文が取れないので fetch_skipped を返す", async () => {
-    const result = await fetchArticleContent(
-      "https://www.youtube.com/watch?v=UufMqwyO7pY",
-    );
+  it.each([
+    "https://www.youtube.com/watch?v=UufMqwyO7pY",
+    "https://m.youtube.com/watch?v=UufMqwyO7pY",
+    "https://music.youtube.com/watch?v=UufMqwyO7pY",
+    "https://youtu.be/UufMqwyO7pY",
+    "https://www.youtube-nocookie.com/embed/UufMqwyO7pY",
+  ])("YouTube の %s は本文が取れないので fetch_skipped を返す", async (url) => {
+    const result = await fetchArticle(url);
 
     expect(result.status).toBe("fetch_skipped");
+  });
+
+  it("末尾が一致するだけの別ドメインは skip しない", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://notyoutube.com/")) {
+        return htmlResponse(`<html><body><main>${BODY}</main></body></html>`);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle("https://notyoutube.com/post");
+
+    expect(result.status).toBe("ok");
   });
 
   it("不正な URL は fetch_failed を返す", async () => {
-    const result = await fetchArticleContent("not a url");
+    const result = await fetchArticle("not a url");
 
     expect(result.status).toBe("fetch_failed");
   });
