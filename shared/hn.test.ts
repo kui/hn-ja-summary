@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
-import { fetchCandidateStories, flattenTopComments } from "./hn.ts";
+import {
+  countComments,
+  fetchCandidateStories,
+  fetchHNItemWithComments,
+  flattenTopComments,
+} from "./hn.ts";
 import type { AlgoliaComment } from "./hn.ts";
 
 function makeComment(
@@ -281,5 +286,179 @@ describe("fetchCandidateStories", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     mockSearch({}, 503);
     expect(await fetchCandidateStories()).toEqual([]);
+  });
+});
+
+describe("fetchHNItemWithComments", () => {
+  const STORY_ID = 100;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function hit(id: number, parentId: number) {
+    return {
+      objectID: String(id),
+      author: `user${id}`,
+      comment_text: `text ${id}`,
+      created_at: "2026-11-07T00:00:00Z",
+      parent_id: parentId,
+    };
+  }
+
+  function mockAlgolia(
+    children: AlgoliaComment[] | null,
+    search: () => Response | Promise<Response>,
+  ) {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/search_by_date")) return search();
+      return Response.json({
+        id: STORY_ID,
+        title: "story",
+        url: null,
+        text: null,
+        author: "alice",
+        points: 1,
+        created_at: "",
+        children,
+      });
+    });
+  }
+
+  it("このストーリーのコメントを 1 リクエストで検索する", async () => {
+    const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));
+    await fetchHNItemWithComments(STORY_ID);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const url = new URL(String(fetchMock.mock.calls[1][0]));
+    expect(url.pathname).toBe("/api/v1/search_by_date");
+    expect(url.searchParams.get("tags")).toBe(`comment,story_${STORY_ID}`);
+    expect(url.searchParams.get("hitsPerPage")).toBe("1000");
+  });
+
+  it("親がツリーにあるコメントは親の子に足し、AlgoliaComment の形に変換する", async () => {
+    mockAlgolia([makeComment(1, "a", LONG)], () =>
+      Response.json({ hits: [hit(2, 1)] }),
+    );
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children).toHaveLength(1);
+    expect(item!.children![0].children).toEqual([
+      {
+        id: 2,
+        author: "user2",
+        text: "text 2",
+        points: null,
+        created_at: "2026-11-07T00:00:00Z",
+        children: [],
+      },
+    ]);
+  });
+
+  it("親が dead で検索結果にないコメントはトップレベルに足す", async () => {
+    const DEAD_ID = 999;
+    mockAlgolia([makeComment(1, "a", LONG)], () =>
+      Response.json({ hits: [hit(2, DEAD_ID)] }),
+    );
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children!.map((c) => c.id)).toEqual([1, 2]);
+    expect(countComments(item!)).toBe(2);
+  });
+
+  it("返信が親より先に並んでいても親の子につなぐ", async () => {
+    const DEAD_ID = 999;
+    mockAlgolia([], () =>
+      Response.json({ hits: [hit(4, 3), hit(3, 2), hit(2, DEAD_ID)] }),
+    );
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children!.map((c) => c.id)).toEqual([2]);
+    const depth1 = item!.children![0].children;
+    expect(depth1.map((c) => c.id)).toEqual([3]);
+    expect(depth1[0].children.map((c) => c.id)).toEqual([4]);
+    expect(countComments(item!)).toBe(3);
+  });
+
+  it("ツリーにあるコメントは重複して足さない", async () => {
+    const tree = [makeComment(1, "a", LONG, [makeComment(2, "b", LONG)])];
+    mockAlgolia(tree, () =>
+      Response.json({ hits: [hit(1, STORY_ID), hit(2, 1)] }),
+    );
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children).toEqual(tree);
+  });
+
+  it("children が null のときも検索結果を足す", async () => {
+    mockAlgolia(null, () => Response.json({ hits: [hit(2, STORY_ID)] }));
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children!.map((c) => c.id)).toEqual([2]);
+  });
+
+  it("children が null で検索結果もなければ null のままにする", async () => {
+    mockAlgolia(null, () => Response.json({ hits: [] }));
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children).toBeNull();
+    expect(countComments(item!)).toBeNull();
+  });
+
+  it.each<[string, () => Response | Promise<Response>]>([
+    ["HTTP エラー", () => new Response("error", { status: 503 })],
+    ["接続エラー", () => Promise.reject(new Error("network"))],
+    [
+      "タイムアウト",
+      () => Promise.reject(new DOMException("timed out", "TimeoutError")),
+    ],
+    ["JSON でないレスポンス", () => new Response("<html>")],
+    ["hits がないレスポンス", () => Response.json({})],
+  ])("検索の%sでは今のツリーだけで続ける", async (_name, search) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tree = [makeComment(1, "a", LONG)];
+    mockAlgolia(tree, search);
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children).toEqual(tree);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("検索にタイムアウトを設定する", async () => {
+    const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));
+    await fetchHNItemWithComments(STORY_ID);
+
+    expect(fetchMock.mock.calls[1][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("検索結果を取り切れないときだけ警告し、取れた分は足す", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockAlgolia([], () =>
+      Response.json({ hits: [hit(2, STORY_ID)], nbHits: 1 }),
+    );
+    await fetchHNItemWithComments(STORY_ID);
+    expect(warn).not.toHaveBeenCalled();
+
+    vi.restoreAllMocks();
+    const warnTruncated = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => {});
+    mockAlgolia([], () =>
+      Response.json({ hits: [hit(2, STORY_ID)], nbHits: 1001 }),
+    );
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(warnTruncated).toHaveBeenCalledTimes(1);
+    expect(item!.children!.map((c) => c.id)).toEqual([2]);
+  });
+
+  it("ツリーの取得に失敗したら検索せず null を返す", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("", { status: 404 }));
+
+    expect(await fetchHNItemWithComments(STORY_ID)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

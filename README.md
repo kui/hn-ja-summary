@@ -20,7 +20,7 @@ Cron Trigger
 
 CF Queues (hn-processor, 1 回の実行で 1 件)
   └─→ backend-worker (queue)
-        ├─ Algolia HN API: コメントツリー取得
+        ├─ Algolia HN API: コメントツリー取得 (dead なコメントの下の返信は検索で補う)
         ├─ Jina + raw fetch: 元記事取得
         ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
         ├─ 検証して HTML を組み立て
