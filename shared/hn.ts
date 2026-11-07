@@ -1,5 +1,5 @@
 import { Temporal } from "temporal-polyfill";
-import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
+import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
 
 // Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
@@ -10,11 +10,9 @@ export interface HNItem {
   by: string;
   time: number;
   points: number;
-  descendants?: number;
   title?: string;
   url?: string;
   text?: string;
-  kids?: number[];
 }
 
 export interface AlgoliaItem {
@@ -50,7 +48,6 @@ export interface AlgoliaComment {
   created_at: string;
   children: AlgoliaComment[];
 }
-const SEARCH_WINDOW_SECONDS = 24 * 60 * 60;
 // Algolia が 1 リクエストで返せる上限。これを超える件数は取得できない
 const MAX_HITS_PER_PAGE = 1000;
 
@@ -60,7 +57,6 @@ interface AlgoliaSearchHit {
   url: string | null;
   author: string;
   points: number | null;
-  num_comments: number | null;
   created_at_i: number;
   story_text: string | null;
 }
@@ -77,7 +73,6 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
     by: hit.author,
     time: hit.created_at_i,
     points: hit.points ?? 0,
-    descendants: hit.num_comments ?? 0,
     title: hit.title ?? undefined,
     url: hit.url ?? undefined,
     text: hit.story_text ?? undefined,
@@ -86,17 +81,13 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 
 export async function fetchCandidateStories(): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
-  const since = now - SEARCH_WINDOW_SECONDS;
-  const until = now - MIN_AGE_HOURS * 3600;
-
-  // 対象期間の全ストーリーは 1000 件を超えるので、ポイントとコメント数も Algolia 側で絞る。
-  // points/num_comments を含むクエリが HTTP 400 になり、一時期クライアント側で絞っていたことがある。
-  // その後ドキュメント https://hn.algolia.com/api どおり使えるように戻ったので、サーバー側で絞る形に戻した。
+  // 対象期間の全ストーリーは 1 回で取得できる件数を超えるので、Algolia 側で絞る。
+  // points や num_comments で絞るクエリは、ドキュメントにあっても HTTP 400 を返すことがある。
+  // そうなったら created_at_i だけで絞り、1000 件を超えないよう期間を分けて取得して、コメント数はクライアント側で判定する。
   const numericFilters = encodeURIComponent(
     [
-      `created_at_i>=${since}`,
-      `created_at_i<=${until}`,
-      `points>=${VELOCITY_THRESHOLD}`,
+      `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
+      `created_at_i<=${now - MIN_AGE_HOURS * 3600}`,
       `num_comments>=${MIN_COMMENTS}`,
     ].join(","),
   );
@@ -198,15 +189,48 @@ function addMissingComments(
 const MIN_TEXT_LENGTH = 20;
 
 function makeSubtreeCounter() {
-  const cache = new Map<number, number>();
+  const cache = new Map<AlgoliaComment, number>();
   function count(comment: AlgoliaComment): number {
-    const cached = cache.get(comment.id);
+    const cached = cache.get(comment);
     if (cached !== undefined) return cached;
     const result = 1 + comment.children.reduce((sum, c) => sum + count(c), 0);
-    cache.set(comment.id, result);
+    cache.set(comment, result);
     return result;
   }
   return count;
+}
+
+function selectComments(
+  comments: AlgoliaComment[],
+  max: number,
+  countSubtree: (comment: AlgoliaComment) => number,
+): Set<AlgoliaComment> {
+  const selected = new Set<AlgoliaComment>();
+  // queues[n] には、自身と子孫を合わせて n 件になるコメントを入れ、n の大きい順に処理する。
+  // 子の n は親より必ず小さいので、処理中や処理済みの queues には入らない。
+  const queues: AlgoliaComment[][] = [];
+  const enqueue = (node: AlgoliaComment) => {
+    (queues[countSubtree(node)] ??= []).push(node);
+  };
+  for (const comment of comments) {
+    enqueue(comment);
+  }
+
+  for (let size = queues.length - 1; size > 0; size--) {
+    for (const node of queues[size] ?? []) {
+      if (selected.size >= max) return selected;
+
+      const hasChildren = node.children.length > 0;
+      if (hasChildren || (node.text && node.text.length >= MIN_TEXT_LENGTH)) {
+        selected.add(node);
+      }
+
+      for (const child of node.children) {
+        enqueue(child);
+      }
+    }
+  }
+  return selected;
 }
 
 export function flattenTopComments(
@@ -217,40 +241,18 @@ export function flattenTopComments(
   const bySubtreeDesc = (a: AlgoliaComment, b: AlgoliaComment) =>
     countSubtree(b) - countSubtree(a);
 
-  // Pass 1: greedy でどのノードを含めるか選定する
-  const selected = new Set<number>();
-  const pq: AlgoliaComment[] = [...comments];
+  const selected = selectComments(comments, max, countSubtree);
 
-  while (pq.length > 0 && selected.size < max) {
-    pq.sort(bySubtreeDesc);
-    const node = pq.shift()!;
-
-    const hasChildren = node.children.length > 0;
-    if (hasChildren) {
-      // 枝
-      selected.add(node.id);
-    } else {
-      // 葉（返信のないコメント）は短い・null なら弾く
-      if (node.text && node.text.length >= MIN_TEXT_LENGTH) {
-        selected.add(node.id);
-      }
-    }
-
-    for (const child of node.children ?? []) {
-      pq.push(child);
-    }
-  }
-
-  // Pass 2: 元のツリー構造を DFS して選定ノードを正しい深さで出力する
+  // 元のツリー構造を DFS して選定ノードを正しい深さで出力する
   const result: string[] = [];
 
   function visit(node: AlgoliaComment, depth: number): void {
-    if (selected.has(node.id)) {
+    if (selected.has(node)) {
       const author = node.author ?? "-";
       result.push(`${"  ".repeat(depth)}[${author}]: ${node.text ?? "-"}`);
     }
 
-    for (const child of [...(node.children ?? [])].sort(bySubtreeDesc)) {
+    for (const child of [...node.children].sort(bySubtreeDesc)) {
       visit(child, depth + 1);
     }
   }
