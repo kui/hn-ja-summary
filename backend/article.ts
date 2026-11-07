@@ -36,7 +36,15 @@ export type ArticleResult =
 // 壊れる正規表現より構造的に正しい。body の main は残す。
 // 確度の高い対象だけ落とす。div/section の class/id 判定は本文を
 // 巻き添えで消す可能性があるため行わない。
-async function readableTextFromResponse(resp: Response): Promise<string> {
+async function readableParts(
+  resp: Response,
+): Promise<{ page: string; articles: string[] }> {
+  // 最上位の article の範囲を、出力に残したコメントで後から切り出す。
+  // 印はページ側に同じ文字列がありえないよう呼び出しごとに変える。
+  // 中に入れるので、article が枠と一緒に消されれば印も消え、数に入らない
+  const nonce = crypto.randomUUID();
+  const startMark = `<!--article-start-${nonce}-->`;
+  const endMark = `<!--article-end-${nonce}-->`;
   // article の中の header/footer/aside は著者・日付・脚注・補足といった
   // 本文の一部なので残す。HTMLRewriter の :not() は子孫結合子を書くと
   // 何にも一致しないため、開始・終了タグで article の深さを数えて判定する
@@ -44,6 +52,10 @@ async function readableTextFromResponse(resp: Response): Promise<string> {
   const cleanedHtml = await new HTMLRewriter()
     .on("article", {
       element(el) {
+        if (articleDepth === 0) {
+          el.prepend(startMark, { html: true });
+          el.append(endMark, { html: true });
+        }
         articleDepth++;
         el.onEndTag(() => {
           articleDepth--;
@@ -70,7 +82,32 @@ async function readableTextFromResponse(resp: Response): Promise<string> {
     )
     .transform(resp)
     .text();
-  return stripHtml(cleanedHtml);
+  const segments = cleanedHtml.split(startMark).slice(1);
+  const ends = segments.map((rest) => rest.indexOf(endMark));
+  return {
+    page: stripHtml(cleanedHtml),
+    // 閉じていない article があると範囲がわからないので、article は使わない
+    articles: ends.includes(-1)
+      ? []
+      : segments.map((rest, i) => stripHtml(rest.slice(0, ends[i]))),
+  };
+}
+
+// article がおすすめ記事のカードや本文の一部にしか使われていないページでは、
+// article だけを読むと本文が消えるため、ページの文字数の半分以上を占めるときだけ使う
+const ARTICLE_MIN_SHARE = 0.5;
+
+async function readableTextFromResponse(resp: Response): Promise<string> {
+  const { page, articles } = await readableParts(resp);
+  const [article] = articles;
+  if (
+    articles.length === 1 &&
+    article.length >= MIN_CONTENT_LENGTH &&
+    article.length >= page.length * ARTICLE_MIN_SHARE
+  ) {
+    return article;
+  }
+  return page;
 }
 
 async function extractReadableText(resp: Response): Promise<string | null> {

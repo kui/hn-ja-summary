@@ -108,6 +108,119 @@ describe("fetchArticleContent", () => {
     }
   });
 
+  it("最上位の article が 1 つで本文の大半を占めるなら、その中だけを返す", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><div>premium promo</div><article><h1>headline</h1>${BODY}</article><div>related links</div></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(`headline ${BODY}`);
+  });
+
+  it("article が本文ではない小さなカードだけなら、ページ全体から枠を除いたものを返す", async () => {
+    const card = "おすすめ記事".repeat(20);
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><main>${BODY}<article>${card}</article></main></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(`${BODY} ${card}`);
+  });
+
+  it("article の中が短すぎるなら、割合が大きくてもページ全体を返す", async () => {
+    const short = "短い本文。".repeat(18);
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><div>intro text</div><article>${short}</article></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `intro text ${short}`,
+    );
+  });
+
+  it("最上位の article が 2 つ以上なら、ページ全体から枠を除いたものを返す", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><div>page intro</div><article>${BODY}</article><article>next post</article></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `page intro ${BODY} next post`,
+    );
+  });
+
+  it("コメントが入れ子の article でも、最上位の article の中をコメントごと返す", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><div>blog promo</div><article>${BODY}<section><article>comment one</article><article>comment two</article></section></article><div>blogroll</div></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `${BODY} comment one comment two`,
+    );
+  });
+
+  it("削除される枠の中の article は数えない", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><div>page intro</div><nav><article>nav card</article></nav><aside><article>side card</article></aside><article role="complementary">role card</article><article>${BODY}</article></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(BODY);
+  });
+
+  it("閉じていない article は使わず、ページ全体を返す", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><div>page intro</div><article>${BODY}`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(`page intro ${BODY}`);
+  });
+
   it("raw は application/xhtml+xml も本文として読む", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
