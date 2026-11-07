@@ -108,6 +108,24 @@ describe("fetchArticleContent", () => {
     }
   });
 
+  it("raw は閉じタグのない article の後ろにあるページの footer を削除する", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><main><article><header>byline</header><p>${BODY}</main><footer>site footer</footer></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.content).toContain("byline");
+    expect(result.content).not.toContain("site footer");
+  });
+
   it("最上位の article が 1 つで本文の大半を占めるなら、その中だけを返す", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
