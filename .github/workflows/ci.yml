@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  # production への push は Deploy ワークフローが同じ CI を呼ぶので二重に走らせない
-  push:
-    branches-ignore: [production]
   pull_request:
+  # production への push では Deploy ワークフローがここを呼ぶので、push トリガーは置かない
   workflow_call:
 
 permissions:
