@@ -118,6 +118,59 @@ describe("flattenTopComments", () => {
     expect(result[2].startsWith("[bob")).toBe(true);
   });
 
+  it("サブツリーの大きさが同じなら、先に候補になったコメントから選ぶ", () => {
+    const a1 = makeComment(11, "a1", LONG);
+    const b1 = makeComment(21, "b1", LONG);
+    const commentA = makeComment(1, "alice", LONG, [a1]);
+    const commentB = makeComment(2, "bob", LONG, [b1]);
+
+    const result = flattenTopComments([commentA, commentB], 3);
+    expect(result).toEqual([
+      `[alice]: ${LONG}`,
+      `  [a1]: ${LONG}`,
+      `[bob]: ${LONG}`,
+    ]);
+  });
+
+  it("同じ大きさの候補は、親を選んだ順に選ぶ", () => {
+    // small は入力では先だが、big を先に選ぶので、b2 が s1 より先に候補になる
+    const s1 = makeComment(11, "s1", LONG);
+    const small = makeComment(1, "small", LONG, [s1]);
+    const b11 = makeComment(211, "b11", LONG);
+    const b1 = makeComment(21, "b1", LONG, [b11]);
+    const b2 = makeComment(22, "b2", LONG);
+    const big = makeComment(2, "big", LONG, [b1, b2]);
+
+    expect(flattenTopComments([small, big], 4)).toEqual([
+      `[big]: ${LONG}`,
+      `  [b1]: ${LONG}`,
+      `  [b2]: ${LONG}`,
+      `[small]: ${LONG}`,
+    ]);
+  });
+
+  it("ID が重複していても、選んだコメントだけを出力し、返信を落とさない", () => {
+    const q = makeComment(3, "q", LONG);
+    const p = makeComment(2, "p", LONG, [q]);
+    const short = makeComment(1, "short", "hi");
+    const parent = makeComment(1, "parent", LONG, [p]);
+
+    expect(flattenTopComments([short, parent], 10)).toEqual([
+      `[parent]: ${LONG}`,
+      `  [p]: ${LONG}`,
+      `    [q]: ${LONG}`,
+    ]);
+  });
+
+  it("除外された葉は件数に数えず、次の候補を選ぶ", () => {
+    const short = makeComment(11, "short", "hi");
+    const long = makeComment(12, "long", LONG);
+    const parent = makeComment(1, "alice", LONG, [short, long]);
+
+    const result = flattenTopComments([parent], 2);
+    expect(result).toEqual([`[alice]: ${LONG}`, `  [long]: ${LONG}`]);
+  });
+
   it("text が null のコメントを無視する", () => {
     const nullText: AlgoliaComment = {
       id: 1,
