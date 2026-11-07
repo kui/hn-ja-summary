@@ -118,6 +118,30 @@ describe("flattenTopComments", () => {
     expect(result[2].startsWith("[bob")).toBe(true);
   });
 
+  it("サブツリーの大きさが同じなら、先に候補になったコメントから選ぶ", () => {
+    // A と B は同じ大きさ。A の子 a1、B の子 b1 も同じ大きさで、a1 が先に候補になる
+    const a1 = makeComment(11, "a1", LONG);
+    const b1 = makeComment(21, "b1", LONG);
+    const commentA = makeComment(1, "alice", LONG, [a1]);
+    const commentB = makeComment(2, "bob", LONG, [b1]);
+
+    const result = flattenTopComments([commentA, commentB], 3);
+    expect(result).toEqual([
+      `[alice]: ${LONG}`,
+      `  [a1]: ${LONG}`,
+      `[bob]: ${LONG}`,
+    ]);
+  });
+
+  it("除外された葉は件数に数えず、次に大きいコメントを選ぶ", () => {
+    const short = makeComment(11, "short", "hi");
+    const long = makeComment(12, "long", LONG);
+    const parent = makeComment(1, "alice", LONG, [short, long]);
+
+    const result = flattenTopComments([parent], 2);
+    expect(result).toEqual([`[alice]: ${LONG}`, `  [long]: ${LONG}`]);
+  });
+
   it("text が null のコメントを無視する", () => {
     const nullText: AlgoliaComment = {
       id: 1,

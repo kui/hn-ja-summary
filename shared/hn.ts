@@ -142,25 +142,34 @@ export function flattenTopComments(
 
   // Pass 1: greedy でどのノードを含めるか選定する
   const selected = new Set<number>();
-  const pq: AlgoliaComment[] = [...comments];
+  // 子のサブツリーは親より必ず小さいので、大きさごとの列を大きい順に処理すれば、
+  // 処理中の列に追加されることはなく、ソートせずに常に最大のノードを取り出せる
+  const queues: AlgoliaComment[][] = [];
+  const enqueue = (node: AlgoliaComment) => {
+    (queues[countSubtree(node)] ??= []).push(node);
+  };
+  for (const comment of comments) {
+    enqueue(comment);
+  }
 
-  while (pq.length > 0 && selected.size < max) {
-    pq.sort(bySubtreeDesc);
-    const node = pq.shift()!;
+  for (let size = queues.length - 1; size > 0; size--) {
+    for (const node of queues[size] ?? []) {
+      if (selected.size >= max) break;
 
-    const hasChildren = node.children.length > 0;
-    if (hasChildren) {
-      // 枝
-      selected.add(node.id);
-    } else {
-      // 葉（返信のないコメント）は短い・null なら弾く
-      if (node.text && node.text.length >= MIN_TEXT_LENGTH) {
+      const hasChildren = node.children.length > 0;
+      if (hasChildren) {
+        // 枝
         selected.add(node.id);
+      } else {
+        // 葉（返信のないコメント）は短い・null なら弾く
+        if (node.text && node.text.length >= MIN_TEXT_LENGTH) {
+          selected.add(node.id);
+        }
       }
-    }
 
-    for (const child of node.children ?? []) {
-      pq.push(child);
+      for (const child of node.children ?? []) {
+        enqueue(child);
+      }
     }
   }
 
