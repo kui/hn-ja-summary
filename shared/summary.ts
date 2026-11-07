@@ -162,24 +162,38 @@ const INLINE_TAGS = new Set(["strong", "em", "code", "a", "br"]);
 
 // 一覧ページの概要は <p> から拾うが、モデルは地の文を <p> で囲まずに返すことがある。
 // トップレベルに出たテキストとインライン要素の並びを <p> で包む。
+// validateFragment は開きタグのない閉じタグも、インライン要素の中のブロックも通すので、
+// 前者は捨て、後者を含む並びは <p> と交差させないよう包まずに残す。
 export function wrapLooseText(html: string): string {
   const out: string[] = [];
   let loose = "";
-  let depth = 0;
+  let wrappable = true;
+  let blockDepth = 0;
+  let inlineDepth = 0;
   const flush = () => {
-    out.push(loose.trim() ? `<p>${loose.trim()}</p>` : loose);
+    out.push(wrappable && loose.trim() ? `<p>${loose.trim()}</p>` : loose);
     loose = "";
+    wrappable = true;
   };
   for (const token of html.split(/(<\/?[a-zA-Z][^>]*>)/)) {
     const tag = token.match(/^<(\/?)([a-zA-Z0-9]+)/);
-    const isBlock = tag !== null && !INLINE_TAGS.has(tag[2].toLowerCase());
-    if (depth === 0 && !isBlock) {
+    const name = tag?.[2].toLowerCase();
+    const closing = tag?.[1] === "/";
+    const isInline = name === undefined || INLINE_TAGS.has(name);
+    if (blockDepth === 0 && (isInline || inlineDepth > 0)) {
       loose += token;
+      if (!isInline) wrappable = false;
+      else if (name !== undefined && name !== "br") {
+        inlineDepth = Math.max(0, inlineDepth + (closing ? -1 : 1));
+      }
       continue;
     }
-    if (depth === 0) flush();
+    if (!isInline && blockDepth === 0) {
+      flush();
+      if (closing) continue;
+    }
     out.push(token);
-    if (isBlock) depth += tag[1] ? -1 : 1;
+    if (!isInline) blockDepth += closing ? -1 : 1;
   }
   flush();
   return out.join("");

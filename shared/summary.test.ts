@@ -162,6 +162,23 @@ describe("wrapLooseText", () => {
     );
   });
 
+  it("開きタグのない閉じタグは段落の区切りとして捨てる", () => {
+    expect(wrapLooseText("本文。</p>後文<ul><li>x</li></ul>残り")).toBe(
+      "<p>本文。</p><p>後文</p><ul><li>x</li></ul><p>残り</p>",
+    );
+  });
+
+  it("ブロックを囲むインライン要素の並びは包まずに残す", () => {
+    expect(wrapLooseText("<strong>見出し<p>段落</p></strong>後文")).toBe(
+      "<strong>見出し<p>段落</p></strong>後文",
+    );
+    expect(
+      wrapLooseText(
+        '<a href="https://x.test/"><ul><li>項目</li></ul></a><p>次</p>',
+      ),
+    ).toBe('<a href="https://x.test/"><ul><li>項目</li></ul></a><p>次</p>');
+  });
+
   it("p やブロック要素だけの断片は変えない", () => {
     const html = "<p>一文目。</p>\n<table><tr><td>x</td></tr></table>";
     expect(wrapLooseText(html)).toBe(html);
