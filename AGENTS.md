@@ -27,6 +27,10 @@ PR のタイトルと説明文は日本語で書くこと。コミットメッ�
 ワークフローを動かすためだけの空コミット（`git commit --allow-empty`）は行わないこと。
 再デプロイが必要な場合は `wrangler deploy` コマンドで直接実行すること。
 
+## Git worktree の起点
+
+worktree は `origin/production` の最新を起点に作ること。
+
 ## eslint-disable コメント
 
 `eslint-disable` / `eslint-disable-next-line` を使う際は、必ず直前の行に **なぜ無効化するのか** を説明するコメントを書くこと。

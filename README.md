@@ -21,7 +21,7 @@ Cron Trigger
 CF Queues (hn-processor, 1 回の実行で 1 件)
   └─→ backend-worker (queue)
         ├─ Algolia HN API: コメントツリー取得 (dead なコメントの下の返信は検索で補う)
-        ├─ Jina + raw fetch: 元記事取得
+        ├─ raw fetch → Firecrawl → Wayback: 元記事取得
         ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
         ├─ 検証して HTML を組み立て
         │    └─ 一時的なエラー (429/408/5xx)・タイムアウト・接続切れ・形式不正・出力上限での途切れは
@@ -55,10 +55,10 @@ scripts/     GitHub Secrets 同期スクリプト
 
 ### backend-worker (wrangler secret で投入)
 
-| 変数             | 説明            |
-| ---------------- | --------------- |
-| `GEMINI_API_KEY` | Gemini API キー |
-| `JINA_API_KEY`   | Jina API キー   |
+| 変数                | 説明               |
+| ------------------- | ------------------ |
+| `GEMINI_API_KEY`    | Gemini API キー    |
+| `FIRECRAWL_API_KEY` | Firecrawl API キー |
 
 ## セットアップ手順
 
@@ -115,7 +115,7 @@ npx wrangler queues create hn-processor
 ```bash
 cd backend
 wrangler secret put GEMINI_API_KEY
-wrangler secret put JINA_API_KEY
+wrangler secret put FIRECRAWL_API_KEY
 ```
 
 ### 6. Cloudflare Access の設定（admin-worker）

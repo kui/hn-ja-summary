@@ -8,7 +8,7 @@ workers_dev = false
 crons = ["22,52 * * * *"]
 
 [secrets]
-required = ["GEMINI_API_KEY", "JINA_API_KEY"]
+required = ["GEMINI_API_KEY", "FIRECRAWL_API_KEY"]
 
 [[d1_databases]]
 binding = "DB"

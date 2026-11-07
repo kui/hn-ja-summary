@@ -21,7 +21,9 @@ graph TB
     end
 
     HN["Hacker News<br/>Algolia API"]
-    JINA["Jina Reader"]
+    ARTICLE["元記事サイト<br/>raw 取得"]
+    FIRECRAWL["Firecrawl<br/>Fallback 抽出"]
+    WAYBACK["Wayback Machine<br/>最終フォールバック"]
     GEMINI["Gemini API<br/>Flex 推論"]
 
     USER -->|"閲覧"| FEED_HTML
@@ -42,7 +44,9 @@ graph TB
 
     POLLER -->|"候補記事を検索"| HN
     PROCESSOR -->|"記事+コメント取得"| HN
-    PROCESSOR -->|"本文抽出"| JINA
+    PROCESSOR -->|"1. raw 取得"| ARTICLE
+    PROCESSOR -->|"2. fallback"| FIRECRAWL
+    PROCESSOR -->|"3. 最終手段"| WAYBACK
     PROCESSOR -->|"日本語要約生成"| GEMINI
     PROCESSOR -->|"要約を保存"| DB
 
@@ -51,7 +55,7 @@ graph TB
     classDef storage fill:#f3e5f5,stroke:#7b1fa2
     classDef user fill:#fce4ec,stroke:#c62828
 
-    class HN,JINA,GEMINI ext
+    class HN,ARTICLE,FIRECRAWL,WAYBACK,GEMINI ext
     class POLLER,PROCESSOR,FEED_HTML,FEED_RSS,ADMIN worker
     class QUEUE,DB storage
     class USER,ADMIN_USER,CRON user
