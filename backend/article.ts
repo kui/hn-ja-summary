@@ -114,7 +114,6 @@ async function fetchViaFirecrawl(
       onlyMainContent: true,
       proxy: "auto",
       timeout: 30_000,
-      maxAge: 0,
     }),
     signal: AbortSignal.timeout(35_000),
   });
