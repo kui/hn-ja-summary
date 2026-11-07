@@ -61,8 +61,8 @@ interface AlgoliaSearchHit {
   story_text: string | null;
 }
 
-interface AlgoliaSearchResponse {
-  hits: AlgoliaSearchHit[];
+interface AlgoliaSearchResponse<Hit> {
+  hits: Hit[];
   nbHits: number;
 }
 
@@ -98,7 +98,7 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
     console.error(`Algolia search failed: ${resp.status}`);
     return [];
   }
-  const res = await resp.json<AlgoliaSearchResponse>();
+  const res = await resp.json<AlgoliaSearchResponse<AlgoliaSearchHit>>();
 
   // nbPages は hitsPerPage=1000 だと常に 1 になるため、取り切れたかは nbHits で判定する
   if (res.nbHits > res.hits.length) {
@@ -121,10 +121,13 @@ export async function fetchHNItemWithComments(
   try {
     addMissingComments(item, await fetchCommentHits(itemId));
   } catch (e) {
-    console.warn(`Algolia comment search failed for ${itemId}:`, e);
+    console.warn(`Failed to add comments from search for ${itemId}:`, e);
   }
   return item;
 }
+
+// 検索はコメントを補うだけなので、応答が止まっても要約の処理を長く待たせない
+const COMMENT_SEARCH_TIMEOUT_MS = 10_000;
 
 interface AlgoliaCommentHit {
   objectID: string;
@@ -137,10 +140,17 @@ interface AlgoliaCommentHit {
 async function fetchCommentHits(itemId: number): Promise<AlgoliaCommentHit[]> {
   const resp = await fetch(
     `${ALGOLIA_API}/search_by_date?tags=comment,story_${itemId}&hitsPerPage=${MAX_HITS_PER_PAGE}`,
+    { signal: AbortSignal.timeout(COMMENT_SEARCH_TIMEOUT_MS) },
   );
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const { hits } = await resp.json<{ hits: AlgoliaCommentHit[] }>();
-  return hits;
+  const res = await resp.json<AlgoliaSearchResponse<AlgoliaCommentHit>>();
+
+  if (res.nbHits > res.hits.length) {
+    console.warn(
+      `WARNING: Algolia matched ${res.nbHits} comments for ${itemId} but only ${res.hits.length} were fetched. Older comments may be missed.`,
+    );
+  }
+  return res.hits;
 }
 
 function algoliaCommentHitToComment(hit: AlgoliaCommentHit): AlgoliaComment {
@@ -180,7 +190,7 @@ function addMissingComments(
   }
   const topLevel = item.children ?? [];
   for (const { parentId, comment } of added) {
-    // 親が dead なら検索結果にも入らないので、返信をトップレベルに置く
+    // 親が見つからなければトップレベルに置く。親が dead か、検索の上限で欠けた返信もここに来る
     (commentsById.get(parentId)?.children ?? topLevel).push(comment);
   }
   item.children = topLevel;

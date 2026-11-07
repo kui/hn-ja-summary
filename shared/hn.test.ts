@@ -409,6 +409,10 @@ describe("fetchHNItemWithComments", () => {
   it.each<[string, () => Response | Promise<Response>]>([
     ["HTTP エラー", () => new Response("error", { status: 503 })],
     ["接続エラー", () => Promise.reject(new Error("network"))],
+    [
+      "タイムアウト",
+      () => Promise.reject(new DOMException("timed out", "TimeoutError")),
+    ],
     ["JSON でないレスポンス", () => new Response("<html>")],
     ["hits がないレスポンス", () => Response.json({})],
   ])("検索の%sでは今のツリーだけで続ける", async (_name, search) => {
@@ -419,6 +423,34 @@ describe("fetchHNItemWithComments", () => {
 
     expect(item!.children).toEqual(tree);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("検索にタイムアウトを設定する", async () => {
+    const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));
+    await fetchHNItemWithComments(STORY_ID);
+
+    expect(fetchMock.mock.calls[1][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("検索結果を取り切れないときだけ警告し、取れた分は足す", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockAlgolia([], () =>
+      Response.json({ hits: [hit(2, STORY_ID)], nbHits: 1 }),
+    );
+    await fetchHNItemWithComments(STORY_ID);
+    expect(warn).not.toHaveBeenCalled();
+
+    vi.restoreAllMocks();
+    const warnTruncated = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => {});
+    mockAlgolia([], () =>
+      Response.json({ hits: [hit(2, STORY_ID)], nbHits: 1001 }),
+    );
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(warnTruncated).toHaveBeenCalledTimes(1);
+    expect(item!.children!.map((c) => c.id)).toEqual([2]);
   });
 
   it("ツリーの取得に失敗したら検索せず null を返す", async () => {
