@@ -48,11 +48,7 @@ function mockFetch(handler: Handler) {
 }
 
 function fetchArticle(url = "https://example.com/post") {
-  return fetchArticleContent(url, {
-    firecrawlApiKey: API_KEY,
-    postedAtMs: POSTED_AT,
-    useFirecrawl: true,
-  });
+  return fetchArticleContent(url, API_KEY, POSTED_AT);
 }
 
 afterEach(() => {
@@ -238,34 +234,6 @@ describe("fetchArticleContent", () => {
     expect(
       requested.find((u) => u.startsWith("https://archive.org/")),
     ).toContain("timestamp=20240102000000");
-  });
-
-  it("useFirecrawl が false なら firecrawl を呼ばずに wayback を試す", async () => {
-    const requested: string[] = [];
-    mockFetch((url) => {
-      requested.push(url);
-      if (url.startsWith("https://example.com/")) {
-        return htmlResponse("blocked", 403);
-      }
-      if (url.startsWith("https://archive.org/wayback/available")) {
-        return waybackAvailable("20240101120000");
-      }
-      if (url.startsWith("https://web.archive.org/web/20240101120000id_/")) {
-        return htmlResponse(`<html><body><main>${BODY}</main></body></html>`);
-      }
-      throw new Error(`unexpected fetch: ${url}`);
-    });
-
-    const result = await fetchArticleContent("https://example.com/post", {
-      firecrawlApiKey: API_KEY,
-      postedAtMs: POSTED_AT,
-      useFirecrawl: false,
-    });
-
-    expect(result.status === "ok" && result.method).toBe("wayback");
-    expect(
-      requested.some((u) => u.startsWith("https://api.firecrawl.dev/")),
-    ).toBe(false);
   });
 
   it("wayback のスナップショットが投稿日時から離れすぎていたら使わない", async () => {

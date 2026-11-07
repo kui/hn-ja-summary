@@ -19,10 +19,6 @@ const MAX_COMMENTS = 100;
 // Flex の容量不足は数分〜十数分続きうるので 1 分から倍々に延ばす。回数の上限は wrangler.toml の max_retries。
 const RETRY_BASE_DELAY_SECONDS = 60;
 
-// 再試行のたびに記事を取り直すので、Firecrawl は 1 件あたり最初の配信と 2 回の再試行までに限り、
-// クレジット（キャッシュから返っても 1 回 1 クレジット）の消費を抑える
-const FIRECRAWL_MAX_ATTEMPTS = 3;
-
 function retryDelaySeconds(attempts: number): number {
   return RETRY_BASE_DELAY_SECONDS * 2 ** (attempts - 1);
 }
@@ -74,11 +70,7 @@ async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
     .run();
 }
 
-async function processItem(
-  itemId: number,
-  env: Env,
-  attempts: number,
-): Promise<void> {
+async function processItem(itemId: number, env: Env): Promise<void> {
   console.log(`Processing item ${itemId}`);
 
   const algoliaItem = await fetchHNItemWithComments(itemId);
@@ -102,11 +94,11 @@ async function processItem(
   let articleFetchMethod: string;
   if (algoliaItem.url) {
     console.log(`Fetching article: ${algoliaItem.url}`);
-    const urlArticle = await fetchArticleContent(algoliaItem.url, {
-      firecrawlApiKey: env.FIRECRAWL_API_KEY,
-      postedAtMs: hnPostedAt,
-      useFirecrawl: attempts <= FIRECRAWL_MAX_ATTEMPTS,
-    });
+    const urlArticle = await fetchArticleContent(
+      algoliaItem.url,
+      env.FIRECRAWL_API_KEY,
+      hnPostedAt,
+    );
     console.log(`  [article] url status: ${urlArticle.status}`);
     if (postText) {
       const combined =
@@ -184,7 +176,7 @@ export async function queue(
   for (const message of batch.messages) {
     const { itemId } = message.body;
     try {
-      await processItem(itemId, env, message.attempts);
+      await processItem(itemId, env);
       message.ack();
     } catch (err) {
       if (

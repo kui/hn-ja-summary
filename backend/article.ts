@@ -225,16 +225,10 @@ function isSkippedHost(host: string): boolean {
   return SKIPPED_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
 }
 
-export interface FetchArticleOptions {
-  firecrawlApiKey: string;
-  postedAtMs: number;
-  // false なら Firecrawl を飛ばして raw の次に Wayback を試す
-  useFirecrawl: boolean;
-}
-
 export async function fetchArticleContent(
   url: string,
-  { firecrawlApiKey, postedAtMs, useFirecrawl }: FetchArticleOptions,
+  firecrawlApiKey: string,
+  postedAtMs: number,
 ): Promise<ArticleResult> {
   let host: string;
   try {
@@ -260,20 +254,16 @@ export async function fetchArticleContent(
     console.warn(`  [article] raw fetch failed for ${host}: ${err}`);
   }
 
-  if (useFirecrawl) {
-    try {
-      const content = await fetchViaFirecrawl(url, host, firecrawlApiKey);
-      if (content) {
-        console.log(
-          `  [article] fetched via firecrawl (${content.length} chars)`,
-        );
-        return { status: "ok", content, method: "firecrawl" };
-      }
-    } catch (err) {
-      console.warn(`  [article] firecrawl failed for ${host}: ${err}`);
+  try {
+    const content = await fetchViaFirecrawl(url, host, firecrawlApiKey);
+    if (content) {
+      console.log(
+        `  [article] fetched via firecrawl (${content.length} chars)`,
+      );
+      return { status: "ok", content, method: "firecrawl" };
     }
-  } else {
-    console.log(`  [article] skipping firecrawl for ${host} (retry limit)`);
+  } catch (err) {
+    console.warn(`  [article] firecrawl failed for ${host}: ${err}`);
   }
 
   try {

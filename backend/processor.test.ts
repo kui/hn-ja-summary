@@ -142,45 +142,6 @@ describe("queue", () => {
     expect(await itemState()).toBeNull();
   });
 
-  it.each([
-    [1, 1],
-    [3, 1],
-    [4, 0],
-  ])(
-    "attempts=%i の配信で Firecrawl を %i 回呼ぶ",
-    async (attempts, firecrawlCalls) => {
-      let calls = 0;
-      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-        const url = String(input);
-        if (url.startsWith("https://hn.algolia.com/api/v1/search_by_date")) {
-          return Response.json({ hits: [] });
-        }
-        if (url.startsWith("https://hn.algolia.com/")) {
-          return Response.json({
-            ...ALGOLIA_ITEM,
-            url: "https://example.com/post",
-            text: null,
-          });
-        }
-        if (url.startsWith("https://example.com/")) {
-          return new Response("blocked", { status: 403 });
-        }
-        if (url.startsWith("https://api.firecrawl.dev/")) {
-          calls++;
-          return new Response("rate limited", { status: 429 });
-        }
-        if (url.startsWith("https://archive.org/wayback/available")) {
-          return Response.json({ archived_snapshots: {} });
-        }
-        return new Response("error", { status: 503 });
-      });
-      vi.spyOn(console, "log").mockImplementation(() => {});
-      vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runQueue(attempts);
-      expect(calls).toBe(firecrawlCalls);
-    },
-  );
-
   it("一時的でないエラーは再試行せず ack する", async () => {
     mockFetch(geminiStatus(400));
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
