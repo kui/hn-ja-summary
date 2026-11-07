@@ -1,5 +1,5 @@
 import { Temporal } from "temporal-polyfill";
-import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
+import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
 
 // Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
@@ -10,11 +10,9 @@ export interface HNItem {
   by: string;
   time: number;
   points: number;
-  descendants?: number;
   title?: string;
   url?: string;
   text?: string;
-  kids?: number[];
 }
 
 export interface AlgoliaItem {
@@ -50,7 +48,6 @@ export interface AlgoliaComment {
   created_at: string;
   children: AlgoliaComment[];
 }
-const SEARCH_WINDOW_SECONDS = 24 * 60 * 60;
 // Algolia が 1 リクエストで返せる上限。これを超える件数は取得できない
 const MAX_HITS_PER_PAGE = 1000;
 
@@ -60,7 +57,6 @@ interface AlgoliaSearchHit {
   url: string | null;
   author: string;
   points: number | null;
-  num_comments: number | null;
   created_at_i: number;
   story_text: string | null;
 }
@@ -77,7 +73,6 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
     by: hit.author,
     time: hit.created_at_i,
     points: hit.points ?? 0,
-    descendants: hit.num_comments ?? 0,
     title: hit.title ?? undefined,
     url: hit.url ?? undefined,
     text: hit.story_text ?? undefined,
@@ -86,17 +81,13 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 
 export async function fetchCandidateStories(): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
-  const since = now - SEARCH_WINDOW_SECONDS;
-  const until = now - MIN_AGE_HOURS * 3600;
-
-  // 対象期間の全ストーリーは 1000 件を超えるので、ポイントとコメント数も Algolia 側で絞る。
-  // points/num_comments を含むクエリが HTTP 400 になり、一時期クライアント側で絞っていたことがある。
-  // その後ドキュメント https://hn.algolia.com/api どおり使えるように戻ったので、サーバー側で絞る形に戻した。
+  // 対象期間の全ストーリーは 1 回で取得できる件数を超えるので、Algolia 側で絞る。
+  // points や num_comments で絞るクエリは、ドキュメントにあっても HTTP 400 を返すことがある。
+  // そうなったら created_at_i だけで絞り、1000 件を超えないよう期間を分けて取得して、コメント数はクライアント側で判定する。
   const numericFilters = encodeURIComponent(
     [
-      `created_at_i>=${since}`,
-      `created_at_i<=${until}`,
-      `points>=${VELOCITY_THRESHOLD}`,
+      `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
+      `created_at_i<=${now - MIN_AGE_HOURS * 3600}`,
       `num_comments>=${MIN_COMMENTS}`,
     ].join(","),
   );

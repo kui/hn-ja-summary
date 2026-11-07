@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { MIN_AGE_HOURS, MIN_COMMENTS, VELOCITY_THRESHOLD } from "./filter.ts";
+import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
 import { fetchCandidateStories, flattenTopComments } from "./hn.ts";
 import type { AlgoliaComment } from "./hn.ts";
 
@@ -169,7 +169,6 @@ describe("fetchCandidateStories", () => {
       url: null,
       author: "alice",
       points: 100,
-      num_comments: 50,
       created_at_i: 1_700_000_000,
       story_text: null,
     };
@@ -183,7 +182,7 @@ describe("fetchCandidateStories", () => {
       );
   }
 
-  it("24 時間前から MIN_AGE_HOURS 前までの条件を満たす記事を 1 リクエストで取得する", async () => {
+  it("SEARCH_WINDOW_HOURS 前から MIN_AGE_HOURS 前までのコメント数の条件を満たす記事を 1 リクエストで取得する", async () => {
     const now = 1_800_000_000;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(now * 1000);
@@ -195,9 +194,8 @@ describe("fetchCandidateStories", () => {
     expect(url.searchParams.get("hitsPerPage")).toBe("1000");
     expect(url.searchParams.get("numericFilters")!.split(",").sort()).toEqual(
       [
-        `created_at_i>=${now - 24 * 3600}`,
+        `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
         `created_at_i<=${now - MIN_AGE_HOURS * 3600}`,
-        `points>=${VELOCITY_THRESHOLD}`,
         `num_comments>=${MIN_COMMENTS}`,
       ].sort(),
     );
@@ -211,7 +209,6 @@ describe("fetchCandidateStories", () => {
       type: "story",
       by: "alice",
       points: 100,
-      descendants: 50,
       title: "story 1",
     });
   });
