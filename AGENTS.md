@@ -29,14 +29,7 @@ PR のタイトルと説明文は日本語で書くこと。コミットメッ�
 
 ## Git worktree の起点
 
-worktree は必ず `origin/production` の最新を起点に作ること。feature ブランチやローカルの `production` を起点にしない。
-
-```sh
-git fetch origin production
-git worktree add -b <branch-name> <worktree-dir> origin/production
-```
-
-worktree を作った後、作業開始前に `git fetch origin production` して `git rebase origin/production` で最新に寄せること。PR の差分に取り込んだ古いコミットが混じらないよう、push 前に `git rev-list --left-right --count origin/production...HEAD` で先行分（右側）が意図したコミット分だけであることを確認すること。
+worktree は `origin/production` の最新を起点に作ること。
 
 ## eslint-disable コメント
 
