@@ -12,7 +12,7 @@ import type { HNItem } from "./hn.ts";
  */
 export const MIN_AGE_HOURS = 2.0;
 export const MIN_COMMENTS = 40;
-export const VELOCITY_THRESHOLD = 20; // points per hour
+export const VELOCITY_THRESHOLD = 20; // 毎時ポイント
 export const SEARCH_WINDOW_HOURS = 24;
 
 /**

@@ -13,7 +13,6 @@ export interface HNItem {
   title?: string;
   url?: string;
   text?: string;
-  kids?: number[];
 }
 
 export interface AlgoliaItem {
@@ -83,8 +82,8 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
 export async function fetchCandidateStories(): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
   // 対象期間の全ストーリーは 1 回で取得できる件数を超えるので、Algolia 側で絞る。
-  // points や num_comments で絞るクエリは、ドキュメントにあるのに HTTP 400 を返す時期があった。
-  // 再発したら created_at_i だけで絞り、1000 件を超えないよう期間を分けて取得して、コメント数はクライアント側で判定する。
+  // points や num_comments で絞るクエリは、ドキュメントにあっても HTTP 400 を返すことがある。
+  // そうなったら created_at_i だけで絞り、1000 件を超えないよう期間を分けて取得して、コメント数はクライアント側で判定する。
   const numericFilters = encodeURIComponent(
     [
       `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
