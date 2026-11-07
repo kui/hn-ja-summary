@@ -20,7 +20,7 @@ const MAX_OUTPUT_TOKENS = 8192;
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
   "見出しタグは含めない。使用可能なタグは p, ul, ol, li, strong, em, code, a, table, thead, tbody, tr, th, td, br のみ。",
-  "地の文は必ず p で囲む。開いたタグは必ず閉じる。属性は a の href のみ許可し、値は http:// または https:// で始まるURLを二重引用符で囲む。",
+  "開いたタグは必ず閉じる。属性は a の href のみ許可し、値は http:// または https:// で始まるURLを二重引用符で囲む。",
   "記号 < > & はHTMLエスケープする。",
   "投稿に含まれていないURLをリンクすることは厳禁。",
 ].join("");
