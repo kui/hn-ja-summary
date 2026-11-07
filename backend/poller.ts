@@ -1,5 +1,5 @@
 import { fetchCandidateStories } from "@hn-feed/shared/hn";
-import { shouldProcess } from "@hn-feed/shared/filter";
+import { meetsVelocity } from "@hn-feed/shared/filter";
 import { batchGetStates, setEnqueued } from "./state";
 
 export async function scheduled(
@@ -11,7 +11,7 @@ export async function scheduled(
   const items = await fetchCandidateStories();
   console.log(`Got ${items.length} candidate stories`);
 
-  const candidates = items.filter(shouldProcess);
+  const candidates = items.filter(meetsVelocity);
   console.log(`${candidates.length} candidates after filter`);
 
   if (candidates.length === 0) {

@@ -169,7 +169,6 @@ describe("fetchCandidateStories", () => {
       url: null,
       author: "alice",
       points: 100,
-      num_comments: 50,
       created_at_i: 1_700_000_000,
       story_text: null,
     };
@@ -210,7 +209,6 @@ describe("fetchCandidateStories", () => {
       type: "story",
       by: "alice",
       points: 100,
-      descendants: 50,
       title: "story 1",
     });
   });
