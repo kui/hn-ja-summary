@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseSummaryDoc,
   renderSummaryHtml,
+  wrapLooseText,
   validateFragment,
   SummaryFormatError,
 } from "./summary.ts";
@@ -115,6 +116,21 @@ describe("renderSummaryHtml", () => {
     expect(html).toMatch(/<h3>a &amp; b<\/h3>/);
   });
 
+  it("p で囲まれていない本文・総括・観点を p で包む", () => {
+    const html = renderSummaryHtml(
+      makeDoc({
+        articleHtml: "記事の要約。",
+        hnOverviewHtml: "議論の総括。",
+        topics: [{ heading: "観点1", bodyHtml: "観点の説明。" }],
+      }),
+      ARTICLE_URL,
+      HN_URL,
+    );
+    expect(html).toContain("<p>記事の要約。</p>");
+    expect(html).toContain("<p>議論の総括。</p>");
+    expect(html).toContain("<p>観点の説明。</p>");
+  });
+
   it("topics が空でも2つの section を返す", () => {
     const html = renderSummaryHtml(
       makeDoc({ topics: [] }),
@@ -122,6 +138,33 @@ describe("renderSummaryHtml", () => {
       HN_URL,
     );
     expect(html.match(/<section /g)?.length).toBe(2);
+  });
+});
+
+describe("wrapLooseText", () => {
+  it("p で囲まれていない地の文を p で包む", () => {
+    expect(wrapLooseText("記事の要約。")).toBe("<p>記事の要約。</p>");
+  });
+
+  it("インライン要素は地の文と一緒に包む", () => {
+    expect(
+      wrapLooseText(
+        '<strong>A</strong>は<a href="https://x.test/">B</a>。<br>C',
+      ),
+    ).toBe('<p><strong>A</strong>は<a href="https://x.test/">B</a>。<br>C</p>');
+  });
+
+  it("ブロック要素の前後に分かれた地の文をそれぞれ包む", () => {
+    expect(
+      wrapLooseText("前文\n<ul><li>要点<ul><li>詳細</li></ul></li></ul>\n後文"),
+    ).toBe(
+      "<p>前文</p><ul><li>要点<ul><li>詳細</li></ul></li></ul><p>後文</p>",
+    );
+  });
+
+  it("p やブロック要素だけの断片は変えない", () => {
+    const html = "<p>一文目。</p>\n<table><tr><td>x</td></tr></table>";
+    expect(wrapLooseText(html)).toBe(html);
   });
 });
 

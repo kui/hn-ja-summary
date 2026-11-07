@@ -158,6 +158,33 @@ export function parseSummaryDoc(text: string): ParsedSummaryDoc {
   };
 }
 
+const INLINE_TAGS = new Set(["strong", "em", "code", "a", "br"]);
+
+// 一覧ページの概要は <p> から拾うが、モデルは地の文を <p> で囲まずに返すことがある。
+// トップレベルに出たテキストとインライン要素の並びを <p> で包む。
+export function wrapLooseText(html: string): string {
+  const out: string[] = [];
+  let loose = "";
+  let depth = 0;
+  const flush = () => {
+    out.push(loose.trim() ? `<p>${loose.trim()}</p>` : loose);
+    loose = "";
+  };
+  for (const token of html.split(/(<\/?[a-zA-Z][^>]*>)/)) {
+    const tag = token.match(/^<(\/?)([a-zA-Z0-9]+)/);
+    const isBlock = tag !== null && !INLINE_TAGS.has(tag[2].toLowerCase());
+    if (depth === 0 && !isBlock) {
+      loose += token;
+      continue;
+    }
+    if (depth === 0) flush();
+    out.push(token);
+    if (isBlock) depth += tag[1] ? -1 : 1;
+  }
+  flush();
+  return out.join("");
+}
+
 function linkList(url: string): string {
   const escaped = escapeHtml(url);
   return `<ul><li><a href="${escaped}">${escaped}</a></li></ul>`;
@@ -171,7 +198,7 @@ export function renderSummaryHtml(
   const topics = doc.topics.map(
     (topic, i) => `<section id="topic-${i + 1}">
 <h3>${escapeHtml(topic.heading)}</h3>
-${topic.bodyHtml.trim()}
+${wrapLooseText(topic.bodyHtml).trim()}
 </section>`,
   );
 
@@ -179,12 +206,12 @@ ${topic.bodyHtml.trim()}
     `<section id="article">
 <h2>${escapeHtml(doc.jaTitle)}</h2>
 ${linkList(articleUrl)}
-${doc.articleHtml.trim()}
+${wrapLooseText(doc.articleHtml).trim()}
 </section>`,
     `<section id="hn">
 <h2>HNコミュニティの反応</h2>
 ${linkList(hnUrl)}
-${doc.hnOverviewHtml.trim()}
+${wrapLooseText(doc.hnOverviewHtml).trim()}
 </section>`,
     ...topics,
   ].join("\n");
