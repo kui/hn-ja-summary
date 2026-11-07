@@ -202,15 +202,44 @@ describe("flattenTopComments", () => {
     expect(result[0].startsWith("[-]:")).toBe(true);
   });
 
-  it("HTML タグをそのまま含める", () => {
-    const c = makeComment(
-      1,
-      "alice",
-      "<p>hello <b>world</b></p> this is long enough",
+  function flatten(text: string): string {
+    return flattenTopComments([makeComment(1, "alice", text)], 10)[0];
+  }
+
+  it("HTML タグを取り除き、段落を改行にする", () => {
+    expect(flatten("first <i>line</i> of text<p>second line")).toBe(
+      "[alice]: first line of text\nsecond line",
     );
-    const result = flattenTopComments([c], 10);
-    expect(result[0].includes("hello <b>world</b>")).toBe(true);
-    expect(result[0].includes("<p>")).toBe(true);
+  });
+
+  it("リンクを href の URL に置き換える", () => {
+    expect(
+      flatten(
+        'see <a href="https:&#x2F;&#x2F;example.com&#x2F;a?b=1&amp;c=2" rel="nofollow">https:&#x2F;&#x2F;example.com&#x2F;a...</a> here',
+      ),
+    ).toBe("[alice]: see https://example.com/a?b=1&c=2 here");
+  });
+
+  it("エンティティを 1 回だけ戻し、戻した文字をタグとして扱わない", () => {
+    expect(flatten("it&#x27;s &quot;a&quot; &lt;b&gt; &amp;lt; long")).toBe(
+      `[alice]: it's "a" <b> &lt; long`,
+    );
+  });
+
+  it("コードブロックの字下げと改行を保つ", () => {
+    expect(
+      flatten(
+        "x<pre><code>  const a = 1;\n  const b = 2;\n</code></pre>\nafter",
+      ),
+    ).toBe("[alice]: x  const a = 1;\n  const b = 2;\nafter");
+  });
+
+  it("空行を作らず、複数行のコメントは 2 行目以降も字下げする", () => {
+    const child = makeComment(2, "bob", `${LONG}\n<p>second`);
+    const parent = makeComment(1, "alice", LONG, [child]);
+    expect(flattenTopComments([parent], 10)[1]).toBe(
+      `  [bob]: ${LONG}\n  second`,
+    );
   });
 });
 
