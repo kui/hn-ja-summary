@@ -114,6 +114,23 @@ describe("記事ページ", () => {
   });
 });
 
+describe("一覧ページ", () => {
+  it.each([
+    ["カーソルなし", "/"],
+    ["カーソルあり", "/?cursor=1700000000000"],
+  ])("%s でも記事を返す", async (_, path) => {
+    await insertItem({
+      id: 1,
+      title: "listed-title",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: "<p>s</p>",
+    });
+
+    expect(await get(path)).toContain("listed-title");
+  });
+});
+
 describe("RSS", () => {
   it("タイトルと description に ]]> が含まれても CDATA が壊れない", async () => {
     const summaryHtml = `<p>x]]><injected/>y</p>`;

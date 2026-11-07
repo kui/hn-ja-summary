@@ -5,7 +5,7 @@ import { escapeHtml, stripHtml } from "@hn-feed/shared/html";
 const MAX_FEED_ITEMS = 20;
 const GITHUB_REPO = "https://github.com/kui/hn-ja-summary";
 
-const FEED_SQL_DEFAULT = `
+const SELECT_FEED_ITEMS = `
 SELECT id, title,
   article_url AS articleUrl,
   hn_url AS hnUrl,
@@ -23,28 +23,16 @@ SELECT id, title,
   thoughts_tokens AS thoughtsTokens,
   updated_at_ms AS updatedAt
 FROM feed_items
+`;
+
+const FEED_SQL_DEFAULT = `
+${SELECT_FEED_ITEMS}
 ORDER BY created_at_ms DESC
 LIMIT ?
 `;
 
 const FEED_SQL_CURSOR = `
-SELECT id, title,
-  article_url AS articleUrl,
-  hn_url AS hnUrl,
-  summary_html AS summaryHtml,
-  created_at_ms AS createdAt,
-  model,
-  hn_posted_at_ms AS hnPostedAt,
-  comment_count AS commentCount,
-  points,
-  comments_used AS commentsUsed,
-  article_chars AS articleChars,
-  article_fetch_method AS articleFetchMethod,
-  input_tokens AS inputTokens,
-  output_tokens AS outputTokens,
-  thoughts_tokens AS thoughtsTokens,
-  updated_at_ms AS updatedAt
-FROM feed_items
+${SELECT_FEED_ITEMS}
 WHERE created_at_ms <= ?
 ORDER BY created_at_ms DESC
 LIMIT ?
@@ -59,23 +47,7 @@ LIMIT ?
 `;
 
 const ITEM_SQL = `
-SELECT id, title,
-  article_url AS articleUrl,
-  hn_url AS hnUrl,
-  summary_html AS summaryHtml,
-  created_at_ms AS createdAt,
-  model,
-  hn_posted_at_ms AS hnPostedAt,
-  comment_count AS commentCount,
-  points,
-  comments_used AS commentsUsed,
-  article_chars AS articleChars,
-  article_fetch_method AS articleFetchMethod,
-  input_tokens AS inputTokens,
-  output_tokens AS outputTokens,
-  thoughts_tokens AS thoughtsTokens,
-  updated_at_ms AS updatedAt
-FROM feed_items
+${SELECT_FEED_ITEMS}
 WHERE id = ?
 `;
 

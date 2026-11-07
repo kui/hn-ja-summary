@@ -94,6 +94,18 @@ describe("POST /enqueue", () => {
     );
   });
 
+  it("処理済みの項目は再処理としてキューに戻す", async () => {
+    await env.DB.prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms)
+       VALUES (123, 'completed', 1, 1)`,
+    ).run();
+
+    const res = await postEnqueue("123");
+
+    expect(await res.text()).toContain("再処理をキューに追加しました");
+    expect(await storedState(123)).toBe("enqueued");
+  });
+
   it("同じオリジンからの POST はキューに追加する", async () => {
     const res = await postEnqueue("123");
 
