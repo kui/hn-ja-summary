@@ -19,6 +19,9 @@ const ALGOLIA_ITEM = {
 function mockFetch(gemini: () => Response) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
+    if (url.startsWith("https://hn.algolia.com/api/v1/search_by_date")) {
+      return Response.json({ hits: [] });
+    }
     if (url.startsWith("https://hn.algolia.com/")) {
       return Response.json(ALGOLIA_ITEM);
     }

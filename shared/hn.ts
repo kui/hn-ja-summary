@@ -124,7 +124,75 @@ export async function fetchHNItemWithComments(
 ): Promise<AlgoliaItem | null> {
   const resp = await fetch(`${ALGOLIA_API}/items/${itemId}`);
   if (!resp.ok) return null;
-  return resp.json<AlgoliaItem>();
+  const item = await resp.json<AlgoliaItem>();
+
+  // items/:id は dead なコメントとその下の返信をツリーから除くので、検索 API で補う
+  try {
+    addMissingComments(item, await fetchCommentHits(itemId));
+  } catch (e) {
+    console.warn(`Algolia comment search failed for ${itemId}:`, e);
+  }
+  return item;
+}
+
+interface AlgoliaCommentHit {
+  objectID: string;
+  author: string | null;
+  comment_text: string | null;
+  created_at: string;
+  parent_id: number;
+}
+
+async function fetchCommentHits(itemId: number): Promise<AlgoliaCommentHit[]> {
+  const resp = await fetch(
+    `${ALGOLIA_API}/search_by_date?tags=comment,story_${itemId}&hitsPerPage=${MAX_HITS_PER_PAGE}`,
+  );
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const { hits } = await resp.json<{ hits: AlgoliaCommentHit[] }>();
+  return hits;
+}
+
+function algoliaCommentHitToComment(hit: AlgoliaCommentHit): AlgoliaComment {
+  return {
+    id: parseInt(hit.objectID, 10),
+    author: hit.author,
+    text: hit.comment_text,
+    points: null,
+    created_at: hit.created_at,
+    children: [],
+  };
+}
+
+function addMissingComments(
+  item: AlgoliaItem,
+  hits: AlgoliaCommentHit[],
+): void {
+  const commentsById = new Map<number, AlgoliaComment>();
+  const stack = [...(item.children ?? [])];
+  while (stack.length > 0) {
+    const comment = stack.pop()!;
+    commentsById.set(comment.id, comment);
+    stack.push(...comment.children);
+  }
+
+  const added = hits
+    .map((hit) => ({
+      parentId: hit.parent_id,
+      comment: algoliaCommentHitToComment(hit),
+    }))
+    .filter(({ comment }) => !commentsById.has(comment.id));
+  if (added.length === 0) return;
+
+  // 検索結果は親より返信が先に並ぶので、全件を登録してから親につなぐ
+  for (const { comment } of added) {
+    commentsById.set(comment.id, comment);
+  }
+  const topLevel = item.children ?? [];
+  for (const { parentId, comment } of added) {
+    // 親が dead なら検索結果にも入らないので、返信をトップレベルに置く
+    (commentsById.get(parentId)?.children ?? topLevel).push(comment);
+  }
+  item.children = topLevel;
 }
 
 const MIN_TEXT_LENGTH = 20;
