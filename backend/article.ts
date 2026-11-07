@@ -37,10 +37,27 @@ export type ArticleResult =
 // 確度の高い対象だけ落とす。div/section の class/id 判定は本文を
 // 巻き添えで消す可能性があるため行わない。
 async function readableTextFromResponse(resp: Response): Promise<string> {
+  // article の中の header/footer/aside は著者・日付・脚注・補足といった
+  // 本文の一部なので残す。HTMLRewriter の :not() は子孫結合子を書くと
+  // 何にも一致しないため、開始・終了タグで article の深さを数えて判定する
+  let articleDepth = 0;
   const cleanedHtml = await new HTMLRewriter()
-    .on("script, style, noscript, svg, template, header, nav, footer, aside", {
+    .on("article", {
+      element(el) {
+        articleDepth++;
+        el.onEndTag(() => {
+          articleDepth--;
+        });
+      },
+    })
+    .on("script, style, noscript, svg, template, nav", {
       element(el) {
         el.remove();
+      },
+    })
+    .on("header, footer, aside", {
+      element(el) {
+        if (articleDepth === 0) el.remove();
       },
     })
     .on(

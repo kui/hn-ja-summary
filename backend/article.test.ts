@@ -86,6 +86,28 @@ describe("fetchArticleContent", () => {
     }
   });
 
+  it("raw は article の中の header/footer/aside を本文として残す", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><header>site header</header><main><article><header>byline</header><article><aside>inner note</aside></article>${BODY}<aside>side note</aside><footer>footnote</footer></article></main><aside>site aside</aside><footer>site footer</footer></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    for (const kept of ["byline", "inner note", "side note", "footnote"]) {
+      expect(result.content).toContain(kept);
+    }
+    for (const removed of ["site header", "site aside", "site footer"]) {
+      expect(result.content).not.toContain(removed);
+    }
+  });
+
   it("raw は application/xhtml+xml も本文として読む", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
