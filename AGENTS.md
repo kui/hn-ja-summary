@@ -27,6 +27,23 @@ PR のタイトルと説明文は日本語で書くこと。コミットメッ�
 ワークフローを動かすためだけの空コミット（`git commit --allow-empty`）は行わないこと。
 再デプロイが必要な場合は `wrangler deploy` コマンドで直接実行すること。
 
+## Git worktree の起点
+
+worktree は必ず `origin/production` の最新を起点に作ること。feature ブランチやローカルの `production` を起点にしない。
+
+```sh
+git fetch origin production
+git worktree add -b <branch-name> <worktree-dir> origin/production
+```
+
+opencode の worktree_create は現在の HEAD を起点にするため、そのまま使うと古い位置から作られてしまう。手順としては以下を用いる。
+
+```sh
+bash scripts/new-worktree.sh <branch-name> [worktree-dir]
+```
+
+すでに opencode で作った worktree を使う場合は、作業前に `git fetch origin production` して `git rebase origin/production` で最新に寄せること。PR の差分に取り込んだ古いコミットが混じらないよう、push 前に `git rev-list --left-right --count origin/production...HEAD` で先行分（右側）が意図したコミット分だけであることを確認すること。
+
 ## eslint-disable コメント
 
 `eslint-disable` / `eslint-disable-next-line` を使う際は、必ず直前の行に **なぜ無効化するのか** を説明するコメントを書くこと。
