@@ -119,7 +119,6 @@ describe("flattenTopComments", () => {
   });
 
   it("サブツリーの大きさが同じなら、先に候補になったコメントから選ぶ", () => {
-    // A と B は同じ大きさ。A の子 a1、B の子 b1 も同じ大きさで、a1 が先に候補になる
     const a1 = makeComment(11, "a1", LONG);
     const b1 = makeComment(21, "b1", LONG);
     const commentA = makeComment(1, "alice", LONG, [a1]);

@@ -142,8 +142,8 @@ export function flattenTopComments(
 
   // Pass 1: greedy でどのノードを含めるか選定する
   const selected = new Set<number>();
-  // 子のサブツリーは親より必ず小さいので、大きさごとの列を大きい順に処理すれば、
-  // 処理中の列に追加されることはなく、ソートせずに常に最大のノードを取り出せる
+  // queues[n] には、返信を含めて n 件のコメントを入れ、n の大きい順に処理する。
+  // 返信の件数は親より必ず少なく、これから処理する箱にしか入らないので、ソートは要らない。
   const queues: AlgoliaComment[][] = [];
   const enqueue = (node: AlgoliaComment) => {
     (queues[countSubtree(node)] ??= []).push(node);
@@ -158,10 +158,8 @@ export function flattenTopComments(
 
       const hasChildren = node.children.length > 0;
       if (hasChildren) {
-        // 枝
         selected.add(node.id);
       } else {
-        // 葉（返信のないコメント）は短い・null なら弾く
         if (node.text && node.text.length >= MIN_TEXT_LENGTH) {
           selected.add(node.id);
         }
