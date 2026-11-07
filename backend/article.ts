@@ -3,6 +3,9 @@ import { stripHtml } from "@hn-feed/shared/html";
 
 const MAX_CONTENT_LENGTH = 15_000;
 const MIN_CONTENT_LENGTH = 100;
+// article がおすすめ記事のカードや本文の一部にしか使われていないページでは、
+// article だけを読むと本文が消えるため、ページの文字数の半分以上を占めるときだけ使う
+const ARTICLE_MIN_SHARE = 0.5;
 // HN の投稿日時からこれ以上離れたスナップショットは、同じ URL でも別の内容の可能性が高い
 const WAYBACK_MAX_DRIFT_MS = 30 * 24 * 60 * 60 * 1000;
 const USER_AGENT = "Mozilla/5.0 (compatible; HNSummaryBot/1.0)";
@@ -38,7 +41,7 @@ export type ArticleResult =
 // 巻き添えで消す可能性があるため行わない。
 async function readableParts(
   resp: Response,
-): Promise<{ page: string; articles: string[] }> {
+): Promise<{ page: string; article: string | null }> {
   // 最上位の article の範囲を、出力に残したコメントで後から切り出す。
   // 印はページ側に同じ文字列がありえないよう呼び出しごとに変える。
   // 中に入れるので、article が枠と一緒に消されれば印も消え、数に入らない
@@ -82,26 +85,23 @@ async function readableParts(
     )
     .transform(resp)
     .text();
-  const segments = cleanedHtml.split(startMark).slice(1);
-  const ends = segments.map((rest) => rest.indexOf(endMark));
+  const page = stripHtml(cleanedHtml);
+  const segments = cleanedHtml.split(startMark);
+  if (segments.length !== 2) return { page, article: null };
+  // </article> が無くても親の終了タグで閉じたものとして印が入る。
+  // 印が無いのは文書が途中で切れたときで、article の終わりがわからない
+  const end = segments[1].indexOf(endMark);
   return {
-    page: stripHtml(cleanedHtml),
-    // 閉じていない article があると範囲がわからないので、article は使わない
-    articles: ends.includes(-1)
-      ? []
-      : segments.map((rest, i) => stripHtml(rest.slice(0, ends[i]))),
+    page,
+    article: end === -1 ? null : stripHtml(segments[1].slice(0, end)),
   };
 }
 
-// article がおすすめ記事のカードや本文の一部にしか使われていないページでは、
-// article だけを読むと本文が消えるため、ページの文字数の半分以上を占めるときだけ使う
-const ARTICLE_MIN_SHARE = 0.5;
-
 async function readableTextFromResponse(resp: Response): Promise<string> {
-  const { page, articles } = await readableParts(resp);
-  const [article] = articles;
+  const { page, article } = await readableParts(resp);
   if (
-    articles.length === 1 &&
+    article !== null &&
+    // article だけだと clampContent で捨てられる長さなら、ページ全体を使う
     article.length >= MIN_CONTENT_LENGTH &&
     article.length >= page.length * ARTICLE_MIN_SHARE
   ) {
