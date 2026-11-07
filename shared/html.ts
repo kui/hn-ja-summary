@@ -12,3 +12,16 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+const HTML_ENTITIES: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#x27;": "'",
+  "&#x2F;": "/",
+};
+
+export function decodeHtmlEntities(s: string): string {
+  return s.replace(/&(?:amp|lt|gt|quot|#x27|#x2F);/g, (m) => HTML_ENTITIES[m]);
+}

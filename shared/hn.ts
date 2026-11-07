@@ -1,5 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
+import { decodeHtmlEntities } from "./html.ts";
 
 // Document https://hn.algolia.com/api
 const ALGOLIA_API = "https://hn.algolia.com/api/v1";
@@ -210,6 +211,18 @@ function makeSubtreeCounter() {
   return count;
 }
 
+// HN のリンクテキストは URL かその省略形だけなので、href に置き換えても情報は減らない
+function commentToText(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<a\s[^>]*href="([^"]*)"[^>]*>.*?<\/a>/gs, "$1")
+      .replace(/<p>/g, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\n{2,}/g, "\n")
+      .trim(),
+  );
+}
+
 function selectComments(
   comments: AlgoliaComment[],
   max: number,
@@ -259,7 +272,12 @@ export function flattenTopComments(
   function visit(node: AlgoliaComment, depth: number): void {
     if (selected.has(node)) {
       const author = node.author ?? "-";
-      result.push(`${"  ".repeat(depth)}[${author}]: ${node.text ?? "-"}`);
+      const indent = "  ".repeat(depth);
+      const text = commentToText(node.text ?? "-").replace(
+        /\n/g,
+        `\n${indent}`,
+      );
+      result.push(`${indent}[${author}]: ${text}`);
     }
 
     for (const child of [...node.children].sort(bySubtreeDesc)) {
