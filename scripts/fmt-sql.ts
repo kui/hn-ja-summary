@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import { format, type FormatOptionsWithLanguage } from "sql-formatter";
-import { readFileSync, writeFileSync } from "node:fs";
+import { globSync, readFileSync, writeFileSync } from "node:fs";
 
 const args: string[] = process.argv.slice(2);
 const checkMode: boolean = args.includes("--check");
-const files: string[] = args.filter((a) => !a.startsWith("-"));
+// Windows の npm は scripts を cmd で実行しグロブを展開しないため、ここで展開する
+const files: string[] = args
+  .filter((a) => !a.startsWith("-"))
+  .flatMap((pattern) => globSync(pattern))
+  .sort();
 
 const formatOptions: FormatOptionsWithLanguage = {
   language: "sqlite",

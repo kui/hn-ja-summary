@@ -1,2 +1,3 @@
 [tools]
 node = "26"
+actionlint = "1.7.12"

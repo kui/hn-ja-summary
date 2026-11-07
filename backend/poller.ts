@@ -1,6 +1,6 @@
 import { fetchCandidateStories } from "@hn-feed/shared/hn";
 import { meetsVelocity } from "@hn-feed/shared/filter";
-import { batchGetStates, setEnqueued } from "./state";
+import { batchGetStates, setEnqueued } from "@hn-feed/shared/state";
 
 export async function scheduled(
   _event: ScheduledController,

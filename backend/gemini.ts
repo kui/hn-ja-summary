@@ -15,6 +15,7 @@ const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
 // サーバー側の打ち切り（X-Server-Timeout）をクライアント側より少し早めにし、
 // 504 を受け取って再試行に回せるようにする。
 const SERVER_TIMEOUT_SECONDS = GEMINI_TIMEOUT_MS / 1000 - 30;
+const MAX_OUTPUT_TOKENS = 8192;
 
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
@@ -103,6 +104,7 @@ interface GeminiResponse {
   usageMetadata?: {
     promptTokenCount: number;
     candidatesTokenCount: number;
+    thoughtsTokenCount?: number;
     totalTokenCount: number;
     serviceTier?: string;
   };
@@ -112,6 +114,7 @@ export interface SummaryResult {
   summaryHtml: string;
   inputTokens: number;
   outputTokens: number;
+  thoughtsTokens: number;
 }
 
 type MissingArticleStatus = Exclude<ArticleInput["status"], "ok">;
@@ -181,7 +184,20 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   const schema = responseSchema(article.status === "ok");
 
   const data = await requestSummary(apiKey, prompt, schema);
+  const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
+  const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
+  const thoughtsTokens = data.usageMetadata?.thoughtsTokenCount ?? 0;
   const candidate = data.candidates?.[0];
+  // feed_items には成功した回の分しか残らないので、失敗した回の使用量はログで追う
+  console.log(
+    `  [gemini] usage: item=${itemId} finishReason=${candidate?.finishReason ?? "(none)"} input=${inputTokens} output=${outputTokens} thoughts=${thoughtsTokens}`,
+  );
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    // 途切れた出力は作り直せば上限内に収まる見込みがあるので再試行に回す
+    throw new SummaryFormatError(
+      "Gemini output truncated: finishReason=MAX_TOKENS",
+    );
+  }
   if (candidate?.finishReason !== "STOP") {
     throw new Error(
       `Gemini output incomplete or blocked: finishReason=${candidate?.finishReason ?? "no candidate"}`,
@@ -200,8 +216,9 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   const doc = { ...parsed, articleHtml };
   return {
     summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
-    inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+    inputTokens,
+    outputTokens,
+    thoughtsTokens,
   };
 }
 
@@ -213,18 +230,21 @@ async function requestSummary(
   let resp: Response;
   let body: string;
   try {
-    resp = await fetch(`${GEMINI_API}/${MODEL}:generateContent?key=${apiKey}`, {
+    resp = await fetch(`${GEMINI_API}/${MODEL}:generateContent`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // URL に載せるとトレース（observability.traces）に外向き fetch の URL ごと残るため、ヘッダで渡す
+        "x-goog-api-key": apiKey,
         "X-Server-Timeout": String(SERVER_TIMEOUT_SECONDS),
       },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         service_tier: "flex",
         generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 2048,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          // 思考量をモデルの既定値に依存させない
+          thinkingConfig: { thinkingLevel: "MINIMAL" },
           responseMimeType: "application/json",
           responseSchema: schema,
         },

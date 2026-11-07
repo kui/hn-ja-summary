@@ -1,17 +1,26 @@
 name: CI
 
 on:
+  # production への push は Deploy ワークフローが同じ CI を呼ぶので二重に走らせない
   push:
+    branches-ignore: [production]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-      - uses: jdx/mise-action@v4
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
       - run: npm ci
       - run: npm run fmt:check
       - run: npm run ts:check
       - run: npm run lint:check
       - run: npm test
+      # マイグレーションの SQL が本番 DB で初めて実行されないよう、先にローカルの D1 で流す
+      - run: npm run db:migrate:local
