@@ -121,12 +121,12 @@ export async function fetchHNItemWithComments(
 const MIN_TEXT_LENGTH = 20;
 
 function makeSubtreeCounter() {
-  const cache = new Map<number, number>();
+  const cache = new Map<AlgoliaComment, number>();
   function count(comment: AlgoliaComment): number {
-    const cached = cache.get(comment.id);
+    const cached = cache.get(comment);
     if (cached !== undefined) return cached;
     const result = 1 + comment.children.reduce((sum, c) => sum + count(c), 0);
-    cache.set(comment.id, result);
+    cache.set(comment, result);
     return result;
   }
   return count;
@@ -143,7 +143,7 @@ export function flattenTopComments(
   // Pass 1: greedy でどのノードを含めるか選定する
   const selected = new Set<number>();
   // queues[n] には、返信を含めて n 件のコメントを入れ、n の大きい順に処理する。
-  // 返信の件数は親より必ず少なく、これから処理する箱にしか入らないので、ソートは要らない。
+  // 返信の件数は親より必ず少ないので、処理中や処理済みの queues に入ることはない。
   const queues: AlgoliaComment[][] = [];
   const enqueue = (node: AlgoliaComment) => {
     (queues[countSubtree(node)] ??= []).push(node);
@@ -152,20 +152,16 @@ export function flattenTopComments(
     enqueue(comment);
   }
 
-  for (let size = queues.length - 1; size > 0; size--) {
+  selection: for (let size = queues.length - 1; size > 0; size--) {
     for (const node of queues[size] ?? []) {
-      if (selected.size >= max) break;
+      if (selected.size >= max) break selection;
 
       const hasChildren = node.children.length > 0;
-      if (hasChildren) {
+      if (hasChildren || (node.text && node.text.length >= MIN_TEXT_LENGTH)) {
         selected.add(node.id);
-      } else {
-        if (node.text && node.text.length >= MIN_TEXT_LENGTH) {
-          selected.add(node.id);
-        }
       }
 
-      for (const child of node.children ?? []) {
+      for (const child of node.children) {
         enqueue(child);
       }
     }
@@ -180,7 +176,7 @@ export function flattenTopComments(
       result.push(`${"  ".repeat(depth)}[${author}]: ${node.text ?? "-"}`);
     }
 
-    for (const child of [...(node.children ?? [])].sort(bySubtreeDesc)) {
+    for (const child of [...node.children].sort(bySubtreeDesc)) {
       visit(child, depth + 1);
     }
   }
