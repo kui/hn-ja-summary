@@ -1,5 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import { stripHtml } from "@hn-feed/shared/html";
+import { readBodyText } from "./decode.ts";
 
 const MAX_CONTENT_LENGTH = 15_000;
 const MIN_CONTENT_LENGTH = 100;
@@ -34,56 +35,6 @@ export type ArticleResult =
   | { status: "fetch_failed" }
   | { status: "fetch_skipped" }
   | { status: "no_url" };
-
-// HTMLRewriter は本文を常に UTF-8 として解釈するため、Shift_JIS・EUC-JP などの
-// ページはここでデコードしてから渡す。
-// 文字コードは BOM → Content-Type ヘッダ → <meta charset> の順に見る。
-const CHARSET_HEAD_BYTES = 1024;
-
-function charsetFromBom(bytes: Uint8Array): string | null {
-  if (
-    bytes.length >= 3 &&
-    bytes[0] === 0xef &&
-    bytes[1] === 0xbb &&
-    bytes[2] === 0xbf
-  ) {
-    return "utf-8";
-  }
-  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
-    return "utf-16le";
-  }
-  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    return "utf-16be";
-  }
-  return null;
-}
-
-function charsetFromContentType(contentType: string): string | null {
-  const m = contentType.match(/;\s*charset\s*=\s*["']?([^"';\s]+)["']?/i);
-  return m ? m[1] : null;
-}
-
-// <meta charset> は ASCII で書かれるので、先頭 1024 バイトを UTF-8 として
-// 読んでもタグの部分は壊れない（WHATWG の prescan と同じ範囲）
-function charsetFromHtmlHead(bytes: Uint8Array): string | null {
-  const head = new TextDecoder("utf-8").decode(
-    bytes.slice(0, CHARSET_HEAD_BYTES),
-  );
-  for (const meta of head.matchAll(/<meta\s[^>]*>/gi)) {
-    const m = meta[0].match(/\bcharset\s*=\s*["']?([^"'>\s;]+)/i);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-function decodeBody(bytes: Uint8Array, charset: string): string {
-  try {
-    return new TextDecoder(charset).decode(bytes);
-  } catch {
-    // 知らない文字コードラベルは UTF-8 にフォールバックする
-    return new TextDecoder("utf-8").decode(bytes);
-  }
-}
 
 // HTMLRewriter は DOM を実体化せずに要素を落とせるので、ネストで
 // 壊れる正規表現より構造的に正しい。body の main は残す。
@@ -133,6 +84,8 @@ async function readableParts(
         },
       },
     )
+    // HTMLRewriter は <meta charset> を見ず、出力もページの文字コードのままにするので、
+    // 文字列に戻した HTML を UTF-8 として渡す
     .transform(
       new Response(html, {
         headers: { "content-type": "text/html; charset=utf-8" },
@@ -174,15 +127,8 @@ async function extractReadableText(resp: Response): Promise<string | null> {
     await discardBody(resp);
     return null;
   }
-  // 文字コードを確定するために全体を一度読む。HTMLRewriter に生の Response を
-  // 渡すと常に UTF-8 として解釈されるため、非 UTF-8 のページは文字化けする
-  const bytes = new Uint8Array(await resp.arrayBuffer());
-  const charset =
-    charsetFromBom(bytes) ??
-    charsetFromContentType(contentType) ??
-    charsetFromHtmlHead(bytes) ??
-    "utf-8";
-  const text = decodeBody(bytes, charset);
+  const text = await readBodyText(resp, isHtml);
+  if (text === null) return null;
   const content = isHtml ? await readableTextFromHtml(text) : stripHtml(text);
   return clampContent(content);
 }

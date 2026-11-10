@@ -374,36 +374,20 @@ describe("fetchArticleContent", () => {
     },
   );
 
-  it("raw は Content-Type に charset がなければ <meta charset> から文字コードを決める", async () => {
+  it("raw の本文が文字化けしていたら使わず、firecrawl を呼ぶ", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
-        return encodedHtmlResponse(
-          SJIS_BUNSHOU,
-          "text/html",
-          '<meta charset="Shift_JIS">',
-        );
+        // 文字コードの宣言がない Shift_JIS のページは UTF-8 として読むしかない
+        return encodedHtmlResponse(SJIS_BUNSHOU, "text/html");
       }
+      if (url.startsWith("https://api.firecrawl.dev/")) return firecrawlOk();
       throw new Error(`unexpected fetch: ${url}`);
     });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await fetchArticle();
 
-    expect(result.status === "ok" && result.method).toBe("raw");
-    expect(result.status === "ok" && result.content).toBe(BODY);
-  });
-
-  it("raw は知らない charset ラベルを UTF-8 として読む", async () => {
-    mockFetch((url) => {
-      if (url.startsWith("https://example.com/")) {
-        return htmlResponse(BODY, 200, "text/html; charset=Unknown-Charset");
-      }
-      throw new Error(`unexpected fetch: ${url}`);
-    });
-
-    const result = await fetchArticle();
-
-    expect(result.status === "ok" && result.method).toBe("raw");
-    expect(result.status === "ok" && result.content).toBe(BODY);
+    expect(result.status === "ok" && result.method).toBe("firecrawl");
   });
 
   it("長い本文は切り詰めて、その旨を書き添える", async () => {
