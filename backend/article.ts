@@ -1,5 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import { stripHtml } from "@hn-feed/shared/html";
+import { readBodyText } from "./decode.ts";
 
 const MAX_CONTENT_LENGTH = 15_000;
 const MIN_CONTENT_LENGTH = 100;
@@ -40,7 +41,7 @@ export type ArticleResult =
 // 確度の高い対象だけ落とす。div/section の class/id 判定は本文を
 // 巻き添えで消す可能性があるため行わない。
 async function readableParts(
-  resp: Response,
+  html: string,
 ): Promise<{ page: string; article: string | null }> {
   // 最上位の article の範囲を、出力に残したコメントで後から切り出す。
   // 印はページ側に同じ文字列がありえないよう呼び出しごとに変える。
@@ -83,7 +84,13 @@ async function readableParts(
         },
       },
     )
-    .transform(resp)
+    // HTMLRewriter は <meta charset> を見ず、出力もページの文字コードのままにするので、
+    // 文字列に戻した HTML を UTF-8 として渡す
+    .transform(
+      new Response(html, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    )
     .text();
   const page = stripHtml(cleanedHtml);
   const segments = cleanedHtml.split(startMark);
@@ -97,8 +104,8 @@ async function readableParts(
   };
 }
 
-async function readableTextFromResponse(resp: Response): Promise<string> {
-  const { page, article } = await readableParts(resp);
+async function readableTextFromHtml(html: string): Promise<string> {
+  const { page, article } = await readableParts(html);
   if (
     article !== null &&
     // article だけだと clampContent で捨てられる長さなら、ページ全体を使う
@@ -120,10 +127,10 @@ async function extractReadableText(resp: Response): Promise<string | null> {
     await discardBody(resp);
     return null;
   }
-  const text = isHtml
-    ? await readableTextFromResponse(resp)
-    : stripHtml(await resp.text());
-  return clampContent(text);
+  const text = await readBodyText(resp, isHtml);
+  if (text === null) return null;
+  const content = isHtml ? await readableTextFromHtml(text) : stripHtml(text);
+  return clampContent(content);
 }
 
 // raw と Wayback のスナップショットは、どちらも元ページの HTML をそのまま読む

@@ -19,6 +19,47 @@ function htmlResponse(
   });
 }
 
+// TextEncoder は UTF-8 しか出力できないため、非 UTF-8 の本文はバイト列で用意する。
+// "本文です。" の Shift_JIS / EUC-JP エンコード。
+const SJIS_BUNSHOU = new Uint8Array([
+  150, 123, 149, 182, 130, 197, 130, 183, 129, 66,
+]);
+const EUCJP_BUNSHOU = new Uint8Array([
+  203, 220, 202, 184, 164, 199, 164, 185, 161, 163,
+]);
+
+function repeatBytes(bytes: Uint8Array, count: number): Uint8Array {
+  const out = new Uint8Array(bytes.length * count);
+  for (let i = 0; i < count; i++) out.set(bytes, i * bytes.length);
+  return out;
+}
+
+function bytesResponse(parts: Uint8Array[], contentType: string): Response {
+  const body = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    body.set(part, offset);
+    offset += part.length;
+  }
+  return new Response(body, { headers: { "content-type": contentType } });
+}
+
+function encodedHtmlResponse(
+  encodedText: Uint8Array,
+  contentType: string,
+  head = "",
+): Response {
+  const encoder = new TextEncoder();
+  return bytesResponse(
+    [
+      encoder.encode(`<html><head>${head}</head><body><main>`),
+      repeatBytes(encodedText, 50),
+      encoder.encode("</main></body></html>"),
+    ],
+    contentType,
+  );
+}
+
 function firecrawlOk(statusCode = 200): Response {
   return Response.json({
     success: true,
@@ -311,6 +352,42 @@ describe("fetchArticleContent", () => {
     const result = await fetchArticle();
 
     expect(result.status === "ok" && result.content).toBe(BODY);
+  });
+
+  it.each([
+    { name: "Shift_JIS", charset: "Shift_JIS", encoded: SJIS_BUNSHOU },
+    { name: "EUC-JP", charset: "EUC-JP", encoded: EUCJP_BUNSHOU },
+  ])(
+    "raw は $name でエンコードされた本文を正しくデコードする",
+    async ({ charset, encoded }) => {
+      mockFetch((url) => {
+        if (url.startsWith("https://example.com/")) {
+          return encodedHtmlResponse(encoded, `text/html; charset=${charset}`);
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      const result = await fetchArticle();
+
+      expect(result.status === "ok" && result.method).toBe("raw");
+      expect(result.status === "ok" && result.content).toBe(BODY);
+    },
+  );
+
+  it("raw の本文が文字化けしていたら使わず、firecrawl を呼ぶ", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        // 文字コードの宣言がない Shift_JIS のページは UTF-8 として読むしかない
+        return encodedHtmlResponse(SJIS_BUNSHOU, "text/html");
+      }
+      if (url.startsWith("https://api.firecrawl.dev/")) return firecrawlOk();
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.method).toBe("firecrawl");
   });
 
   it("長い本文は切り詰めて、その旨を書き添える", async () => {
