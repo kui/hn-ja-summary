@@ -207,7 +207,6 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
   const parsed = parseSummaryDoc(text.trim());
   await validateSummaryDoc(parsed);
-
   const articleHtml =
     article.status === "ok"
       ? parsed.articleHtml
@@ -224,7 +223,7 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   );
   for (const { field, href } of removed) {
     console.warn(
-      `  [gemini] removed unsourced link: item=${itemId} field=${field} href=${href === null ? "(none)" : href.slice(0, 200)}`,
+      `  [gemini] removed unsourced link: item=${itemId} field=${field} href=${href === null ? "(none)" : JSON.stringify(href.slice(0, 200))}`,
     );
   }
   return {

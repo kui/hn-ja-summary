@@ -227,7 +227,7 @@ describe("generateSummary のリンクの照合", () => {
     expect(result.summaryHtml).not.toContain("evil.test");
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain(
-      "item=1 field=articleHtml href=https://evil.test/",
+      'item=1 field=articleHtml href="https://evil.test/"',
     );
   });
 });

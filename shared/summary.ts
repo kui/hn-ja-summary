@@ -160,14 +160,21 @@ export function parseSummaryDoc(text: string): ParsedSummaryDoc {
 
 const INLINE_TAGS = new Set(["strong", "em", "code", "a", "br"]);
 
-// 照合先の中で URL が終わる位置。HN のコメントや記事本文では URL の直後に句読点や
-// 閉じ括弧が続くことが多いので、末尾のそれらは URL に含めない。
-const SOURCE_URL_PATTERN = /https?:\/\/[!-~]+/g;
-const SOURCE_URL_EXCLUDED = /[<>"'`].*$/s;
-const SOURCE_URL_TRAILING = /[.,;:!?)\]}*]+$/;
+// 照合先で URL がどこで終わるかは文字だけでは決められない（`Foo_(bar)` の閉じ括弧は URL の一部、
+// `(see https://x/)` の閉じ括弧は地の文）。そこで、空白や HTML の区切りまでを最長の形とし、
+// 次の位置で切った形もすべて許可する。どの形も照合先に実際に現れる文字列の先頭部分になる。
+// - URL のあとに続きやすい記号（引用符、括弧）と、非 ASCII 文字（日本語の地の文）の手前
+// - 途中から始まる別の URL の手前（`a,https://b`、Wayback の URL など）
+// - 末尾の句読点や閉じ括弧を削った形
+const SOURCE_URL_START = /https?:\/\//g;
+const SOURCE_URL_RUN = /[^\s<>"`]+/y;
+const SOURCE_URL_CUT = /['()[\]]|[^\x00-\x7f]+/g;
+const SOURCE_URL_TRAILING = /[.,;:!?'")\]}*]+$/;
 
-// 末尾のスラッシュとフラグメントの有無は同じ URL として扱う。
-// パース時にホストの大文字小文字と、パスの非 ASCII 文字のエンコードも揃う。
+// 末尾のスラッシュ、フラグメント、空のクエリ、既定のポートの有無は同じ URL として扱う。
+// パース時にホストの大文字小文字とパスの非 ASCII 文字のエンコードが揃うので、
+// パーセントエンコードの大文字小文字だけここで揃える。
+// userinfo を含む URL は、照合先にない文字列を href に入れられてしまうので、一致させない。
 function normalizeUrl(url: string): string | null {
   let u: URL;
   try {
@@ -175,17 +182,33 @@ function normalizeUrl(url: string): string | null {
   } catch {
     return null;
   }
+  if (u.username !== "" || u.password !== "") return null;
   const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : "";
-  return `${u.protocol}//${u.host}${path}${u.search}`;
+  return `${u.protocol}//${u.host}${path}${u.search}`.replace(
+    /%[0-9a-f]{2}/gi,
+    (m) => m.toUpperCase(),
+  );
 }
 
 function sourceUrls(source: string): Set<string> {
+  const text = decodeHtmlEntities(source);
+  const starts = [...text.matchAll(SOURCE_URL_START)].map((m) => m.index);
   const urls = new Set<string>();
-  for (const [raw] of decodeHtmlEntities(source).matchAll(SOURCE_URL_PATTERN)) {
-    const url = normalizeUrl(
-      raw.replace(SOURCE_URL_EXCLUDED, "").replace(SOURCE_URL_TRAILING, ""),
-    );
-    if (url !== null) urls.add(url);
+  for (const start of starts) {
+    SOURCE_URL_RUN.lastIndex = start;
+    const run = SOURCE_URL_RUN.exec(text)?.[0] ?? "";
+    const ends = [run.length];
+    for (const m of run.matchAll(SOURCE_URL_CUT)) ends.push(m.index);
+    for (const s of starts) {
+      if (s > start && s < start + run.length) ends.push(s - start);
+    }
+    for (const end of ends) {
+      const candidate = run.slice(0, end);
+      for (const c of [candidate, candidate.replace(SOURCE_URL_TRAILING, "")]) {
+        const url = normalizeUrl(c);
+        if (url !== null) urls.add(url);
+      }
+    }
   }
   return urls;
 }
@@ -205,6 +228,7 @@ async function stripUnsourcedLinks(
   return new HTMLRewriter()
     .on("a", {
       element(el) {
+        // getAttribute はエンティティをデコードしない
         const raw = el.getAttribute("href");
         const href = raw === null ? null : decodeHtmlEntities(raw);
         const url = href === null ? null : normalizeUrl(href);
@@ -221,29 +245,25 @@ async function stripUnsourcedLinks(
  * 要約中のリンクのうち、href が source（モデルに渡したテキスト）に現れない URL のものは
  * `<a>` を外してテキストだけ残す。
  */
-export async function stripUnsourcedSummaryLinks<T extends ParsedSummaryDoc>(
-  doc: T,
+export async function stripUnsourcedSummaryLinks(
+  doc: SummaryDoc,
   source: string,
-): Promise<{ doc: T; removed: RemovedLink[] }> {
+): Promise<{ doc: SummaryDoc; removed: RemovedLink[] }> {
   const allowed = sourceUrls(source);
   const removed: RemovedLink[] = [];
   const strip = (html: string, field: string) =>
     stripUnsourcedLinks(html, field, allowed, removed);
-  const result: T = {
-    ...doc,
-    articleHtml:
-      doc.articleHtml === undefined
-        ? undefined
-        : await strip(doc.articleHtml, "articleHtml"),
-    hnOverviewHtml: await strip(doc.hnOverviewHtml, "hnOverviewHtml"),
-    topics: await Promise.all(
-      doc.topics.map(async (topic, i) => ({
-        ...topic,
-        bodyHtml: await strip(topic.bodyHtml, `topics[${i}].bodyHtml`),
-      })),
-    ),
-  };
-  return { doc: result, removed };
+  const articleHtml = await strip(doc.articleHtml, "articleHtml");
+  const hnOverviewHtml = await strip(doc.hnOverviewHtml, "hnOverviewHtml");
+  // ログの順番を出力の順に揃えるため、並行させずに 1 つずつ処理する
+  const topics = [];
+  for (const [i, topic] of doc.topics.entries()) {
+    topics.push({
+      ...topic,
+      bodyHtml: await strip(topic.bodyHtml, `topics[${i}].bodyHtml`),
+    });
+  }
+  return { doc: { ...doc, articleHtml, hnOverviewHtml, topics }, removed };
 }
 
 // 一覧ページの概要は <p> から拾うが、モデルは地の文を <p> で囲まずに返すことがある。

@@ -239,7 +239,7 @@ describe("validateFragment", () => {
 describe("stripUnsourcedSummaryLinks", () => {
   async function strip(html: string, source: string) {
     const { doc, removed } = await stripUnsourcedSummaryLinks(
-      { jaTitle: "t", hnOverviewHtml: html, topics: [] },
+      { jaTitle: "t", articleHtml: "", hnOverviewHtml: html, topics: [] },
       source,
     );
     return { html: doc.hnOverviewHtml, removed: removed.map((r) => r.href) };
@@ -284,13 +284,44 @@ describe("stripUnsourcedSummaryLinks", () => {
     expect(result).toEqual({ html: "x", removed: [href] });
   });
 
-  it("入れ子の a タグは内側も照合する", async () => {
-    const result = await strip(
+  it.each([
+    [
+      "内側だけ照合先にない",
       '<p><a href="https://ok.test/">a<a href="https://evil.test/">b</a></a></p>',
-      "https://ok.test/",
-    );
-    expect(result.removed).toEqual(["https://evil.test/"]);
-    expect(result.html).not.toContain("evil.test");
+      '<p><a href="https://ok.test/">ab</a></p>',
+    ],
+    [
+      "外側だけ照合先にない",
+      '<p><a href="https://evil.test/">a<a href="https://ok.test/">b</a></a></p>',
+      '<p>a<a href="https://ok.test/">b</a></p>',
+    ],
+  ])("入れ子の a タグは内側も照合する（%s）", async (_, html, expected) => {
+    expect(await strip(html, "https://ok.test/")).toEqual({
+      html: expected,
+      removed: ["https://evil.test/"],
+    });
+  });
+
+  it("userinfo を含む href は外す", async () => {
+    expect(
+      await strip('<a href="https://u:p@ok.test/">x</a>', "https://ok.test/"),
+    ).toEqual({ html: "x", removed: ["https://u:p@ok.test/"] });
+  });
+
+  it("http と https は別の URL として扱う", async () => {
+    expect(
+      await strip('<a href="https://ok.test/">x</a>', "http://ok.test/"),
+    ).toEqual({ html: "x", removed: ["https://ok.test/"] });
+  });
+
+  it("数値文字参照をデコードした URL で照合する", async () => {
+    // デコードせずに照合すると、ブラウザが開く https://x.test/a#zz ではなく https://x.test/a& と照合してしまう
+    expect(
+      await strip(
+        '<a href="https://x.test/a&#35;zz">x</a>',
+        "https://x.test/a&",
+      ),
+    ).toEqual({ html: "x", removed: ["https://x.test/a#zz"] });
   });
 
   it("閉じタグの空白や単引用符の href も正しく扱う", async () => {
@@ -340,6 +371,58 @@ describe("stripUnsourcedSummaryLinks", () => {
       "パスの非 ASCII 文字",
       "https://ja.wikipedia.org/wiki/%E6%9D%B1",
       "https://ja.wikipedia.org/wiki/東",
+    ],
+    [
+      "照合先にそのまま書かれた非 ASCII 文字",
+      "https://ja.wikipedia.org/wiki/東京 です",
+      "https://ja.wikipedia.org/wiki/東京",
+    ],
+    [
+      "URL の直後に続く日本語",
+      "https://example.com/xを参照",
+      "https://example.com/x",
+    ],
+    [
+      "括弧を含む URL",
+      "see https://en.wikipedia.org/wiki/Foo_(bar) ok",
+      "https://en.wikipedia.org/wiki/Foo_(bar)",
+    ],
+    [
+      "Markdown の括弧を含む URL",
+      "[Foo](https://en.wikipedia.org/wiki/Foo_(bar))",
+      "https://en.wikipedia.org/wiki/Foo_(bar)",
+    ],
+    [
+      "続けて書いた Markdown のリンクの 1 つ目",
+      "[a](https://a.test/x)[b](https://b.test/y)",
+      "https://a.test/x",
+    ],
+    [
+      "続けて書いた Markdown のリンクの 2 つ目",
+      "[a](https://a.test/x)[b](https://b.test/y)",
+      "https://b.test/y",
+    ],
+    [
+      "カンマでつないだ URL",
+      "https://a.test/x,https://b.test/y",
+      "https://b.test/y",
+    ],
+    [
+      "URL の中の URL",
+      "https://web.archive.org/web/2020/https://example.com/x",
+      "https://example.com/x",
+    ],
+    ["末尾が * の URL", "https://x.test/a*", "https://x.test/a*"],
+    [
+      "アポストロフィを含む URL",
+      "https://en.wikipedia.org/wiki/O'Brien",
+      "https://en.wikipedia.org/wiki/O'Brien",
+    ],
+    ["数値文字参照", "https://x.test/?a=1&b=2", "https://x.test/?a=1&#38;b=2"],
+    [
+      "パーセントエンコードの大文字小文字",
+      "https://x.test/%E6",
+      "https://x.test/%e6",
     ],
   ])("%sでも同じ URL として残す", async (_, source, href) => {
     const html = `<a href="${href}">x</a>`;
