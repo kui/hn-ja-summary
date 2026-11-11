@@ -1,6 +1,7 @@
 import {
   parseSummaryDoc,
   renderSummaryHtml,
+  stripUnsourcedSummaryLinks,
   SummaryFormatError,
   validateSummaryDoc,
 } from "@hn-feed/shared/summary";
@@ -206,6 +207,7 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
   const parsed = parseSummaryDoc(text.trim());
   await validateSummaryDoc(parsed);
+
   const articleHtml =
     article.status === "ok"
       ? parsed.articleHtml
@@ -213,7 +215,18 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   if (articleHtml === undefined) {
     throw new SummaryFormatError("articleHtml is missing");
   }
-  const doc = { ...parsed, articleHtml };
+  // モデルが「投稿に含まれていないURLをリンクすることは厳禁」の指示を守らなかった分は、
+  // 作り直さずにリンクだけ外す（作り直すと Flex のリクエストが増えるため）。
+  // 照合先はモデルに渡したプロンプトそのもの。
+  const { doc, removed } = await stripUnsourcedSummaryLinks(
+    { ...parsed, articleHtml },
+    prompt,
+  );
+  for (const { field, href } of removed) {
+    console.warn(
+      `  [gemini] removed unsourced link: item=${itemId} field=${field} href=${href === null ? "(none)" : href.slice(0, 200)}`,
+    );
+  }
   return {
     summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
     inputTokens,

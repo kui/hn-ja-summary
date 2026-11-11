@@ -194,3 +194,40 @@ describe("generateSummary", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 });
+
+describe("generateSummary のリンクの照合", () => {
+  it("プロンプトに現れない URL のリンクを外し、外したものをログに出す", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      geminiOk({
+        text: JSON.stringify({
+          ...VALID_DOC,
+          articleHtml:
+            '<p><a href="https://example.com/post">元記事</a>と<a href="https://evil.test/">偽物</a></p>',
+          hnOverviewHtml: '<p><a href="https://comment.test/ref">参照</a></p>',
+        }),
+      }),
+    );
+
+    const result = await generateSummary(
+      "test-key",
+      1,
+      "Title",
+      "https://example.com/post",
+      { status: "ok", content: "本文" },
+      ["[alice]: see https://comment.test/ref"],
+    );
+
+    expect(result.summaryHtml).toContain(
+      '<a href="https://example.com/post">元記事</a>',
+    );
+    expect(result.summaryHtml).toContain(
+      '<a href="https://comment.test/ref">参照</a>',
+    );
+    expect(result.summaryHtml).not.toContain("evil.test");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      "item=1 field=articleHtml href=https://evil.test/",
+    );
+  });
+});

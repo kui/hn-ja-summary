@@ -5,6 +5,7 @@ import {
   wrapLooseText,
   validateFragment,
   SummaryFormatError,
+  stripUnsourcedSummaryLinks,
 } from "./summary.ts";
 import type { SummaryDoc } from "./summary.ts";
 
@@ -232,5 +233,143 @@ describe("validateFragment", () => {
     await expect(
       validateFragment('<a href="https://example.com">x</a>'),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("stripUnsourcedSummaryLinks", () => {
+  async function strip(html: string, source: string) {
+    const { doc, removed } = await stripUnsourcedSummaryLinks(
+      { jaTitle: "t", hnOverviewHtml: html, topics: [] },
+      source,
+    );
+    return { html: doc.hnOverviewHtml, removed: removed.map((r) => r.href) };
+  }
+
+  it("source に現れる URL のリンクはそのまま残す", async () => {
+    const html =
+      '<p>詳細は <a href="https://example.com/page1">こちら</a>。</p>';
+    expect(
+      await strip(html, "本文中に https://example.com/page1 がある。"),
+    ).toEqual({ html, removed: [] });
+  });
+
+  it("source に現れない URL のリンクは a タグだけ外す", async () => {
+    expect(
+      await strip(
+        '<p>詳細は <a href="https://evil.test/x">リンク</a>だ。</p>',
+        "https://example.com/page1",
+      ),
+    ).toEqual({
+      html: "<p>詳細は リンクだ。</p>",
+      removed: ["https://evil.test/x"],
+    });
+  });
+
+  it("href のない a タグも外す", async () => {
+    expect(await strip("<p><a>no href</a></p>", "x")).toEqual({
+      html: "<p>no href</p>",
+      removed: [null],
+    });
+  });
+
+  it.each([
+    ["別のドメインになる前方一致", "https://example.co"],
+    ["途中で切った URL", "https://github.com/foo"],
+    ["スキームだけ", "https://"],
+  ])("%sは外す", async (_, href) => {
+    const result = await strip(
+      `<a href="${href}">x</a>`,
+      "see https://example.com/x and https://github.com/foo/bar",
+    );
+    expect(result).toEqual({ html: "x", removed: [href] });
+  });
+
+  it("入れ子の a タグは内側も照合する", async () => {
+    const result = await strip(
+      '<p><a href="https://ok.test/">a<a href="https://evil.test/">b</a></a></p>',
+      "https://ok.test/",
+    );
+    expect(result.removed).toEqual(["https://evil.test/"]);
+    expect(result.html).not.toContain("evil.test");
+  });
+
+  it("閉じタグの空白や単引用符の href も正しく扱う", async () => {
+    expect(
+      await strip(
+        "<p><a href='https://ok.test/a'>a</a > <a href=\"https://evil.test/\">b</a ></p>",
+        "https://ok.test/a",
+      ),
+    ).toEqual({
+      html: "<p><a href='https://ok.test/a'>a</a > b</p>",
+      removed: ["https://evil.test/"],
+    });
+  });
+
+  it.each([
+    [
+      "HN 形式でエンコードされた投稿本文",
+      "https:&#x2F;&#x2F;github.com&#x2F;foo&#x2F;bar",
+      "https://github.com/foo/bar",
+    ],
+    [
+      "&amp; が残った記事本文",
+      "https://x.test/?a=1&amp;b=2",
+      "https://x.test/?a=1&amp;b=2",
+    ],
+    [
+      "末尾のスラッシュの有無",
+      "https://example.com/x",
+      "https://example.com/x/",
+    ],
+    [
+      "フラグメントの有無",
+      "https://example.com/x",
+      "https://example.com/x#sec",
+    ],
+    [
+      "文末の句点と閉じ括弧",
+      "(see https://example.com/x).",
+      "https://example.com/x",
+    ],
+    [
+      "Markdown のリンク",
+      "[docs](https://example.com/x)",
+      "https://example.com/x",
+    ],
+    [
+      "パスの非 ASCII 文字",
+      "https://ja.wikipedia.org/wiki/%E6%9D%B1",
+      "https://ja.wikipedia.org/wiki/東",
+    ],
+  ])("%sでも同じ URL として残す", async (_, source, href) => {
+    const html = `<a href="${href}">x</a>`;
+    expect(await strip(html, source)).toEqual({ html, removed: [] });
+  });
+
+  it("全フィールドを照合し、どのフィールドで外したかを返す", async () => {
+    const { doc, removed } = await stripUnsourcedSummaryLinks(
+      {
+        jaTitle: "t",
+        articleHtml: '<p><a href="https://a.test/">a</a></p>',
+        hnOverviewHtml: '<p><a href="https://b.test/">b</a></p>',
+        topics: [
+          { heading: "h1", bodyHtml: "<p>no link</p>" },
+          {
+            heading: "h2",
+            bodyHtml: '<p><a href="https://ok.test/">c</a></p>',
+          },
+        ],
+      },
+      "https://ok.test/",
+    );
+    expect(doc.articleHtml).toBe("<p>a</p>");
+    expect(doc.hnOverviewHtml).toBe("<p>b</p>");
+    expect(doc.topics[1]?.bodyHtml).toBe(
+      '<p><a href="https://ok.test/">c</a></p>',
+    );
+    expect(removed).toEqual([
+      { field: "articleHtml", href: "https://a.test/" },
+      { field: "hnOverviewHtml", href: "https://b.test/" },
+    ]);
   });
 });

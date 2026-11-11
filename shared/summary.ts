@@ -1,4 +1,4 @@
-import { escapeHtml } from "./html.ts";
+import { decodeHtmlEntities, escapeHtml } from "./html.ts";
 
 export interface SummaryTopic {
   heading: string;
@@ -159,6 +159,92 @@ export function parseSummaryDoc(text: string): ParsedSummaryDoc {
 }
 
 const INLINE_TAGS = new Set(["strong", "em", "code", "a", "br"]);
+
+// 照合先の中で URL が終わる位置。HN のコメントや記事本文では URL の直後に句読点や
+// 閉じ括弧が続くことが多いので、末尾のそれらは URL に含めない。
+const SOURCE_URL_PATTERN = /https?:\/\/[!-~]+/g;
+const SOURCE_URL_EXCLUDED = /[<>"'`].*$/s;
+const SOURCE_URL_TRAILING = /[.,;:!?)\]}*]+$/;
+
+// 末尾のスラッシュとフラグメントの有無は同じ URL として扱う。
+// パース時にホストの大文字小文字と、パスの非 ASCII 文字のエンコードも揃う。
+function normalizeUrl(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : "";
+  return `${u.protocol}//${u.host}${path}${u.search}`;
+}
+
+function sourceUrls(source: string): Set<string> {
+  const urls = new Set<string>();
+  for (const [raw] of decodeHtmlEntities(source).matchAll(SOURCE_URL_PATTERN)) {
+    const url = normalizeUrl(
+      raw.replace(SOURCE_URL_EXCLUDED, "").replace(SOURCE_URL_TRAILING, ""),
+    );
+    if (url !== null) urls.add(url);
+  }
+  return urls;
+}
+
+export interface RemovedLink {
+  field: string;
+  // href 属性のない <a> は null
+  href: string | null;
+}
+
+async function stripUnsourcedLinks(
+  html: string,
+  field: string,
+  allowed: Set<string>,
+  removed: RemovedLink[],
+): Promise<string> {
+  return new HTMLRewriter()
+    .on("a", {
+      element(el) {
+        const raw = el.getAttribute("href");
+        const href = raw === null ? null : decodeHtmlEntities(raw);
+        const url = href === null ? null : normalizeUrl(href);
+        if (url !== null && allowed.has(url)) return;
+        removed.push({ field, href });
+        el.removeAndKeepContent();
+      },
+    })
+    .transform(new Response(html))
+    .text();
+}
+
+/**
+ * 要約中のリンクのうち、href が source（モデルに渡したテキスト）に現れない URL のものは
+ * `<a>` を外してテキストだけ残す。
+ */
+export async function stripUnsourcedSummaryLinks<T extends ParsedSummaryDoc>(
+  doc: T,
+  source: string,
+): Promise<{ doc: T; removed: RemovedLink[] }> {
+  const allowed = sourceUrls(source);
+  const removed: RemovedLink[] = [];
+  const strip = (html: string, field: string) =>
+    stripUnsourcedLinks(html, field, allowed, removed);
+  const result: T = {
+    ...doc,
+    articleHtml:
+      doc.articleHtml === undefined
+        ? undefined
+        : await strip(doc.articleHtml, "articleHtml"),
+    hnOverviewHtml: await strip(doc.hnOverviewHtml, "hnOverviewHtml"),
+    topics: await Promise.all(
+      doc.topics.map(async (topic, i) => ({
+        ...topic,
+        bodyHtml: await strip(topic.bodyHtml, `topics[${i}].bodyHtml`),
+      })),
+    ),
+  };
+  return { doc: result, removed };
+}
 
 // 一覧ページの概要は <p> から拾うが、モデルは地の文を <p> で囲まずに返すことがある。
 // トップレベルに出たテキストとインライン要素の並びを <p> で包む。
