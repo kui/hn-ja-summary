@@ -85,25 +85,6 @@ describe("flattenTopComments", () => {
     expect(result[0].startsWith("[alice]")).toBe(true);
   });
 
-  it("greedy 選定で異なる木をまたいで比較する", () => {
-    // commentA(10) > commentB(8) > commentA1(7) > commentA2(3)
-    const a2 = makeComment(12, "a2", LONG);
-    const a1 = makeComment(11, "a1", LONG, [a2]); // subtree=2
-    const commentA = makeComment(1, "alice", LONG, [a1, a2]); // subtree=4 (a1+a2+a2's children...実際の数は別途)
-
-    const b1 = makeComment(21, "b1", LONG);
-    const b2 = makeComment(22, "b2", LONG);
-    const b3 = makeComment(23, "b3", LONG);
-    const commentB = makeComment(2, "bob", LONG, [b1, b2, b3]); // subtree=4
-
-    // max=3: commentA か commentB が先に来て、その子、次に相手のトップ
-    const result = flattenTopComments([commentA, commentB], 3);
-    expect(result.length).toBe(3);
-    expect(result[0].startsWith("[alice]")).toBe(true);
-    expect(result[1].startsWith("  [a1]")).toBe(true);
-    expect(result[2].startsWith("[bob")).toBe(true);
-  });
-
   it("木構造を維持する（greedy 選定でも返信が正しい親の下に来る）", () => {
     // commentA(subtree=10) commentA1(subtree=7) commentA2(subtree=3) commentB(subtree=8)
     // max=3: greedy は A→B→A1 の順で選定するが出力は A→A1→B の順
@@ -123,14 +104,13 @@ describe("flattenTopComments", () => {
     expect(result[2].startsWith("[bob")).toBe(true);
   });
 
-  it("サブツリーの大きさが同じなら、先に候補になったコメントから選ぶ", () => {
+  it("サブツリーの大きさが同じトップレベルは、入力順に選び、入力順に出力する", () => {
     const a1 = makeComment(11, "a1", LONG);
     const b1 = makeComment(21, "b1", LONG);
     const commentA = makeComment(1, "alice", LONG, [a1]);
     const commentB = makeComment(2, "bob", LONG, [b1]);
 
-    const result = flattenTopComments([commentA, commentB], 3);
-    expect(result).toEqual([
+    expect(flattenTopComments([commentA, commentB], 3)).toEqual([
       `[alice]: ${LONG}`,
       `  [a1]: ${LONG}`,
       `[bob]: ${LONG}`,
@@ -455,10 +435,13 @@ describe("fetchHNItemWithComments", () => {
   });
 
   it("検索にタイムアウトを設定する", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));
     await fetchHNItemWithComments(STORY_ID);
 
-    expect(fetchMock.mock.calls[1][1]?.signal).toBeInstanceOf(AbortSignal);
+    const searchSignal = fetchMock.mock.calls[1][1]?.signal;
+    const i = timeout.mock.results.findIndex((r) => r.value === searchSignal);
+    expect(timeout.mock.calls[i]).toEqual([10_000]);
   });
 
   it("検索結果を取り切れないときだけ警告し、取れた分は足す", async () => {
