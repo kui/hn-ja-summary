@@ -2,12 +2,12 @@ import { escapeHtml } from "@hn-feed/shared/html";
 import { setEnqueued, type ItemState } from "@hn-feed/shared/state";
 
 const PAGE_STYLE = `
-:root{color-scheme:light dark;--text:#222;--bg:#fafafa;--input-border:#ccc;--ok-bg:#e8f5e9;--ok-border:#a5d6a7;--warn-bg:#fff8e1;--warn-border:#ffe082;--error-bg:#ffebee;--error-border:#ef9a9a}
-@media (prefers-color-scheme:dark){:root{--text:#e6e6e6;--bg:#161616;--input-border:#555;--ok-bg:#1b3320;--ok-border:#2e7d32;--warn-bg:#3a2f0b;--warn-border:#8d6e00;--error-bg:#3b1a1a;--error-border:#c62828}}
+:root{color-scheme:light dark;--text:#222;--bg:#fafafa;--input-border:#767676;--ok-bg:#e8f5e9;--ok-border:#a5d6a7;--warn-bg:#fff8e1;--warn-border:#ffe082;--error-bg:#ffebee;--error-border:#ef9a9a}
+@media (prefers-color-scheme:dark){:root{--text:#e6e6e6;--bg:#161616;--input-border:#8a8a8a;--ok-bg:#1b3320;--ok-border:#2e7d32;--warn-bg:#3a2f0b;--warn-border:#8d6e00;--error-bg:#3b1a1a;--error-border:#c62828}}
 body{max-width:720px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;line-height:1.6;color:var(--text);background:var(--bg)}
 h1{font-size:1.5em;margin:.67em 0}
-input[type=text]{width:100%;max-width:480px;padding:8px;font-size:1em;border:1px solid var(--input-border);border-radius:4px;box-sizing:border-box}
-button{margin-top:8px;padding:8px 20px;font-size:1em;cursor:pointer}
+input[type=text]{width:100%;max-width:480px;padding:8px;font:inherit;border:1px solid var(--input-border);border-radius:4px;box-sizing:border-box}
+button{margin-top:8px;padding:8px 20px;font:inherit;cursor:pointer}
 .result{margin:1em 0;padding:.75em 1em;border-radius:4px}
 .result.ok{background:var(--ok-bg);border:1px solid var(--ok-border)}
 .result.warn{background:var(--warn-bg);border:1px solid var(--warn-border)}
@@ -70,10 +70,10 @@ function renderEnqueuePage(resultHtml: string, defaultValue = ""): Response {
   <h1>エンキュー</h1>
   ${resultHtml}
   <form method="POST" action="/enqueue">
-    <p>HN item ID または URL を入力してください。</p>
+    <p><label for="hn-id">HN item ID または URL</label></p>
     <p>
-      <input type="text" name="id" placeholder="43012345 または https://news.ycombinator.com/item?id=43012345"
-        value="${escapeHtml(defaultValue)}" autofocus>
+      <input type="text" id="hn-id" name="id" placeholder="43012345 または https://news.ycombinator.com/item?id=43012345"
+        value="${escapeHtml(defaultValue)}" required autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" autofocus>
     </p>
     <button type="submit">キューに追加</button>
   </form>
