@@ -62,9 +62,9 @@ article{overflow-wrap:break-word;padding:1em 0;border-bottom:1px solid #e0e0e0}
 article:last-child{border:none}
 .meta{color:#666;font-size:.85em;margin:0 0 .25em}
 .pagination{display:flex;justify-content:space-between;margin:2em 0}
-.pagination .disabled{color:#999}
+.pagination .disabled{color:#707070}
 .meta-grid{display:grid;grid-template-columns:auto 1fr;gap:.25em 1em;font-size:.85em;color:#555;margin:1.5em 0}
-.meta-grid dt{color:#888}
+.meta-grid dt{color:#6b6b6b}
 .meta-grid dd{margin:0;overflow-wrap:anywhere}
 table{border-collapse:collapse;width:100%;margin:1em 0}
 td,th{border:1px solid #ddd;padding:6px 10px;text-align:left}
