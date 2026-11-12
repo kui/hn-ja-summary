@@ -14,14 +14,25 @@ export function escapeHtml(s: string): string {
 }
 
 const HTML_ENTITIES: Record<string, string> = {
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#x27;": "'",
-  "&#x2F;": "/",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
 };
 
 export function decodeHtmlEntities(s: string): string {
-  return s.replace(/&(?:amp|lt|gt|quot|#x27|#x2F);/g, (m) => HTML_ENTITIES[m]);
+  return s.replace(
+    /&(?:(amp|lt|gt|quot|apos)|#(\d+)|#x([0-9a-f]+));/gi,
+    (
+      m,
+      name: string | undefined,
+      dec: string | undefined,
+      hex: string | undefined,
+    ) => {
+      if (name !== undefined) return HTML_ENTITIES[name.toLowerCase()] ?? m;
+      const code = dec !== undefined ? Number(dec) : parseInt(hex ?? "", 16);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : m;
+    },
+  );
 }
