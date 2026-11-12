@@ -104,6 +104,19 @@ describe("flattenTopComments", () => {
     expect(result[2].startsWith("[bob")).toBe(true);
   });
 
+  it("サブツリーの大きさが同じトップレベルは、入力順に選び、入力順に出力する", () => {
+    const a1 = makeComment(11, "a1", LONG);
+    const b1 = makeComment(21, "b1", LONG);
+    const commentA = makeComment(1, "alice", LONG, [a1]);
+    const commentB = makeComment(2, "bob", LONG, [b1]);
+
+    expect(flattenTopComments([commentA, commentB], 3)).toEqual([
+      `[alice]: ${LONG}`,
+      `  [a1]: ${LONG}`,
+      `[bob]: ${LONG}`,
+    ]);
+  });
+
   it("同じ大きさの候補は、親を選んだ順に選ぶ", () => {
     // small は入力では先だが、big を先に選ぶので、b2 が s1 より先に候補になる
     const s1 = makeComment(11, "s1", LONG);
@@ -426,10 +439,9 @@ describe("fetchHNItemWithComments", () => {
     const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));
     await fetchHNItemWithComments(STORY_ID);
 
-    expect(timeout).toHaveBeenCalledExactlyOnceWith(10_000);
-    expect(fetchMock.mock.calls[1][1]?.signal).toBe(
-      timeout.mock.results[0]!.value,
-    );
+    const searchSignal = fetchMock.mock.calls[1][1]?.signal;
+    const i = timeout.mock.results.findIndex((r) => r.value === searchSignal);
+    expect(timeout.mock.calls[i]).toEqual([10_000]);
   });
 
   it("検索結果を取り切れないときだけ警告し、取れた分は足す", async () => {
