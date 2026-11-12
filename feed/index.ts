@@ -52,23 +52,25 @@ WHERE id = ?
 `;
 
 const PAGE_STYLE = `
-body{max-width:720px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;line-height:1.6;color:#222;background:#fafafa}
+:root{color-scheme:light dark;--text:#222;--bg:#fafafa;--link:#1967d2;--rule:#e0e0e0;--meta:#666;--disabled:#707070;--grid:#555;--grid-label:#6b6b6b;--cell-border:#ddd;--th-bg:#f0f0f0}
+@media (prefers-color-scheme:dark){:root{--text:#e6e6e6;--bg:#161616;--link:#8ab4f8;--rule:#333;--meta:#a8a8a8;--disabled:#8c8c8c;--grid:#b8b8b8;--grid-label:#9a9a9a;--cell-border:#444;--th-bg:#242424}}
+body{max-width:720px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;line-height:1.6;color:var(--text);background:var(--bg)}
 h1{font-size:1.5em;margin:.67em 0}
 h2{font-size:1.2em;margin:.5em 0}
 h3{font-size:1.05em;margin:.5em 0}
-a{color:#1a73e8;text-decoration:none}
+a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
-article{overflow-wrap:break-word;padding:1em 0;border-bottom:1px solid #e0e0e0}
+article{overflow-wrap:break-word;padding:1em 0;border-bottom:1px solid var(--rule)}
 article:last-child{border:none}
-.meta{color:#666;font-size:.85em;margin:0 0 .25em}
+.meta{color:var(--meta);font-size:.85em;margin:0 0 .25em}
 .pagination{display:flex;justify-content:space-between;margin:2em 0}
-.pagination .disabled{color:#707070}
-.meta-grid{display:grid;grid-template-columns:auto 1fr;gap:.25em 1em;font-size:.85em;color:#555;margin:1.5em 0}
-.meta-grid dt{color:#6b6b6b}
+.pagination .disabled{color:var(--disabled)}
+.meta-grid{display:grid;grid-template-columns:auto 1fr;gap:.25em 1em;font-size:.85em;color:var(--grid);margin:1.5em 0}
+.meta-grid dt{color:var(--grid-label)}
 .meta-grid dd{margin:0;overflow-wrap:anywhere}
 table{border-collapse:collapse;width:100%;margin:1em 0}
-td,th{border:1px solid #ddd;padding:6px 10px;text-align:left}
-th{background:#f0f0f0}
+td,th{border:1px solid var(--cell-border);padding:6px 10px;text-align:left}
+th{background:var(--th-bg)}
 ul,ol{padding-left:1.5em}
 `;
 
@@ -274,6 +276,7 @@ function renderIndexPage(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>HN Summary Feed</title>
   <meta name="description" content="Hacker News のトレンド記事を日本語で要約">
   <meta property="og:title" content="HN Summary Feed">
@@ -313,6 +316,7 @@ function renderItemPage(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>${displayTitle}</title>
   <meta name="description" content="${ogDesc}">
   <meta property="og:title" content="${displayTitle}">
