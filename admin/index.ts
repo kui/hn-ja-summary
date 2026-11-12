@@ -2,7 +2,7 @@ import { escapeHtml } from "@hn-feed/shared/html";
 import { setEnqueued, type ItemState } from "@hn-feed/shared/state";
 
 const PAGE_STYLE = `
-body{max-width:720px;margin:0 auto;padding:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;color:#222;background:#fafafa}
+body{max-width:720px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;line-height:1.6;color:#222;background:#fafafa}
 h1{font-size:1.5em;margin:.67em 0}
 input[type=text]{width:100%;max-width:480px;padding:8px;font-size:1em;border:1px solid #ccc;border-radius:4px;box-sizing:border-box}
 button{margin-top:8px;padding:8px 20px;font-size:1em;cursor:pointer}

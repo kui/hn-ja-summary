@@ -52,7 +52,7 @@ WHERE id = ?
 `;
 
 const PAGE_STYLE = `
-body{max-width:720px;margin:0 auto;padding:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;color:#222;background:#fafafa}
+body{max-width:720px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;line-height:1.6;color:#222;background:#fafafa}
 h1{font-size:1.5em;margin:.67em 0}
 h2{font-size:1.2em;margin:.5em 0}
 h3{font-size:1.05em;margin:.5em 0}
