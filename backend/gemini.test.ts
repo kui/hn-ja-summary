@@ -54,6 +54,7 @@ afterEach(() => {
 
 describe("generateSummary", () => {
   it("Flex 推論とサーバー側のタイムアウトを指定してモデルを呼ぶ", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(
@@ -84,7 +85,8 @@ describe("generateSummary", () => {
     });
     // クライアント側の 12 分より前にサーバーが打ち切るよう、余裕を引いた秒数を送る
     expect(new Headers(init?.headers).get("X-Server-Timeout")).toBe("690");
-    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(timeout).toHaveBeenCalledExactlyOnceWith(12 * 60 * 1000);
+    expect(init?.signal).toBe(timeout.mock.results[0]!.value);
   });
 
   it.each([408, 429, 500, 502, 503, 504])(

@@ -24,9 +24,8 @@ function makeDoc(overrides: Partial<SummaryDoc> = {}): SummaryDoc {
 
 describe("parseSummaryDoc", () => {
   it("正常なJSONをパースする", () => {
-    const doc = parseSummaryDoc(JSON.stringify(makeDoc()));
-    expect(doc.jaTitle).toBe("日本語タイトル");
-    expect(doc.topics.length).toBe(1);
+    const input = makeDoc();
+    expect(parseSummaryDoc(JSON.stringify(input))).toEqual(input);
   });
 
   it("topics が空でも通す", () => {
