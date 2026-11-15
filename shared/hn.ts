@@ -111,10 +111,16 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
   return res.hits.map(algoliaHitToHNItem);
 }
 
+// consumer は 1 回の実行が 15 分を超えると強制終了され、catch を通らずエラーも残らない。
+// Gemini の 12 分と記事取得の最大 75 秒に足しても 15 分に収まる長さにする
+const ITEM_FETCH_TIMEOUT_MS = 30_000;
+
 export async function fetchHNItemWithComments(
   itemId: number,
 ): Promise<AlgoliaItem | null> {
-  const resp = await fetch(`${ALGOLIA_API}/items/${itemId}`);
+  const resp = await fetch(`${ALGOLIA_API}/items/${itemId}`, {
+    signal: AbortSignal.timeout(ITEM_FETCH_TIMEOUT_MS),
+  });
   if (!resp.ok) return null;
   const item = await resp.json<AlgoliaItem>();
 
