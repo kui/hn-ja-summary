@@ -434,6 +434,17 @@ describe("fetchHNItemWithComments", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it("ストーリーの取得にタイムアウトを設定する", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));
+    await fetchHNItemWithComments(STORY_ID);
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain(`/items/${STORY_ID}`);
+    const itemSignal = fetchMock.mock.calls[0][1]?.signal;
+    const i = timeout.mock.results.findIndex((r) => r.value === itemSignal);
+    expect(timeout.mock.calls[i]).toEqual([30_000]);
+  });
+
   it("検索にタイムアウトを設定する", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));

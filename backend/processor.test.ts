@@ -151,4 +151,16 @@ describe("queue", () => {
     expect(await itemState()).toBe("error");
     expect(error).toHaveBeenCalledTimes(1);
   });
+
+  // skipped にすると poller が再投入しないので、error にして次のポーリングで拾わせる
+  it("HN の投稿の取得がタイムアウトしたら skipped ではなく error にする", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new DOMException("timed out", "TimeoutError"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const message = await runQueue(1);
+    expect(message.retry).not.toHaveBeenCalled();
+    expect(message.ack).toHaveBeenCalled();
+    expect(await itemState()).toBe("error");
+  });
 });
