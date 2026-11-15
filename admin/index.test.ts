@@ -106,6 +106,22 @@ describe("POST /enqueue", () => {
     expect(await storedState(123)).toBe("enqueued");
   });
 
+  it("失敗が続いた項目は失敗回数を戻してキューに戻す", async () => {
+    await env.DB.prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, error_count)
+       VALUES (123, 'failed', 1, 1, 3)`,
+    ).run();
+
+    await postEnqueue("123");
+
+    const row = await env.DB.prepare(
+      "SELECT state, error_count FROM processed_items WHERE id = ?",
+    )
+      .bind(123)
+      .first();
+    expect(row).toEqual({ state: "enqueued", error_count: 0 });
+  });
+
   it("同じオリジンからの POST はキューに追加する", async () => {
     const res = await postEnqueue("123");
 

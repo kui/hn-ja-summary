@@ -122,7 +122,7 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
 
   const isReprocess = prevState === "completed";
 
-  await setEnqueued(env.DB, itemId);
+  await setEnqueued(env.DB, itemId, { resetErrorCount: true });
   await env.QUEUE.send({ itemId });
 
   const action = isReprocess ? "再処理" : "処理";

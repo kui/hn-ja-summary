@@ -26,6 +26,7 @@ CF Queues (hn-processor, 1 回の実行で 1 件)
         ├─ 検証して HTML を組み立て
         │    └─ 一時的なエラー (429/408/5xx)・タイムアウト・接続切れ・形式不正・出力上限での途切れは
         │       その場で作り直さず、キューで遅延を倍々に延ばして再試行
+        │    └─ それ以外のエラーは次の poller で再投入し、3 回続いたら止める (failed)
         └─ D1: feed_items / processed_items 更新
 
 feed-worker (fetch handler)
@@ -176,3 +177,12 @@ npm -w admin run dev
 - 投稿から 2 時間以上たっている
 - コメントが 40 件以上ある
 - 投稿からの平均で毎時 20 ポイント以上獲得している
+
+## 再投入が止まった項目
+
+一時的でないエラー（Gemini の SAFETY ブロックなど）が 3 回続いた項目は `failed` になり、poller は再投入しない。
+次のコマンドで一覧を出し、直したあとに管理 UI の「エンキュー」から投入し直すと、もう一度 3 回まで処理する。
+
+```bash
+npm -w feed exec -- wrangler d1 execute hn-feed --remote --command "SELECT id, error_message FROM processed_items WHERE state = 'failed' ORDER BY updated_at_ms DESC"
+```

@@ -151,4 +151,15 @@ describe("queue", () => {
     expect(await itemState()).toBe("error");
     expect(error).toHaveBeenCalledTimes(1);
   });
+
+  it("一時的でないエラーが 3 回続いたら poller が再投入しない failed にする", async () => {
+    mockFetch(geminiStatus(400));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const states = [];
+    for (let i = 0; i < 3; i++) {
+      await runQueue(1);
+      states.push(await itemState());
+    }
+    expect(states).toEqual(["error", "error", "failed"]);
+  });
 });
