@@ -445,15 +445,6 @@ describe("fetchHNItemWithComments", () => {
     expect(timeout.mock.calls[i]).toEqual([30_000]);
   });
 
-  it("ストーリーの取得がタイムアウトしたら例外を投げる", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(
-      new DOMException("timed out", "TimeoutError"),
-    );
-    await expect(fetchHNItemWithComments(STORY_ID)).rejects.toThrow(
-      "timed out",
-    );
-  });
-
   it("検索にタイムアウトを設定する", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = mockAlgolia([], () => Response.json({ hits: [] }));

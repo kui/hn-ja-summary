@@ -112,7 +112,7 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
 }
 
 // consumer は 1 回の実行が 15 分を超えると強制終了され、catch を通らずエラーも残らない。
-// Gemini の 12 分と記事取得の最大 75 秒に足しても 15 分に収まる長さにする
+// コメント検索の 10 秒、記事取得の最大 75 秒、Gemini の 12 分に足しても 15 分に収まる長さにする
 const ITEM_FETCH_TIMEOUT_MS = 30_000;
 
 export async function fetchHNItemWithComments(
