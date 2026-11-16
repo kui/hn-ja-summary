@@ -34,6 +34,8 @@ const ALLOWED_TAGS = new Set([
   "strong",
   "em",
   "code",
+  "sup",
+  "sub",
   "a",
   "table",
   "thead",
@@ -158,7 +160,7 @@ export function parseSummaryDoc(text: string): ParsedSummaryDoc {
   };
 }
 
-const INLINE_TAGS = new Set(["strong", "em", "code", "a", "br"]);
+const INLINE_TAGS = new Set(["strong", "em", "code", "sup", "sub", "a", "br"]);
 
 // 照合先で URL がどこで終わるかは文字だけでは決められない（`Foo_(bar)` の閉じ括弧は URL の一部、
 // `(see https://x/)` の閉じ括弧は地の文）。そこで、空白や HTML の区切りまでを最長の形とし、

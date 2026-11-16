@@ -154,6 +154,12 @@ describe("wrapLooseText", () => {
     ).toBe('<p><strong>A</strong>は<a href="https://x.test/">B</a>。<br>C</p>');
   });
 
+  it("sup と sub は地の文と一緒に包む", () => {
+    expect(wrapLooseText("10<sup>9</sup> と H<sub>2</sub>O")).toBe(
+      "<p>10<sup>9</sup> と H<sub>2</sub>O</p>",
+    );
+  });
+
   it("ブロック要素の前後に分かれた地の文をそれぞれ包む", () => {
     expect(
       wrapLooseText("前文\n<ul><li>要点<ul><li>詳細</li></ul></li></ul>\n後文"),
@@ -208,6 +214,21 @@ describe("validateFragment", () => {
     await expect(
       validateFragment('<p><a href="https://example.com>x</a></p>'),
     ).rejects.toThrow(SummaryFormatError);
+  });
+
+  it("sup と sub を通す", async () => {
+    await expect(
+      validateFragment("<p>10<sup>9</sup> と H<sub>2</sub>O</p>"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("属性付きの sup と sub を拒否する", async () => {
+    await expect(
+      validateFragment('<p>x<sup class="x">2</sup></p>'),
+    ).rejects.toThrow(/disallowed attribute: <sup class>/);
+    await expect(
+      validateFragment('<p>x<sub id="y">2</sub></p>'),
+    ).rejects.toThrow(/disallowed attribute: <sub id>/);
   });
 
   it("許可外タグを拒否する", async () => {
