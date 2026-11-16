@@ -22,13 +22,22 @@ queue = "hn-processor"
 
 # Gemini は Flex 推論で呼ぶため 1 件あたり最大十数分かかる。consumer の wall time 上限は
 # 1 回の実行あたり 15 分なので、1 回 1 件にして上限に収め、件数は並列実行（max_concurrency 未指定で自動スケール）でこなす。
-# Flex の容量不足（503/429）などの一時的なエラー、打ち切り（504）、タイムアウト、接続切れ、出力の形式不正や上限での途切れは
+# 再試行しても通らないと分かっている失敗（Gemini の安全性フィルタなど）以外は、
 # processor が 1 分から倍々の遅延で再試行する。6 回で計約 1 時間待つ。
 # retry_delay は wall time 超過などで実行自体が失敗したときの再配信間隔。
+# 6 回の再配信を使い切ったメッセージは dead_letter_queue に移り、processor がその項目を error にする。
 [[queues.consumers]]
 queue = "hn-processor"
 max_batch_size = 1
 max_retries = 6
+retry_delay = 300
+dead_letter_queue = "hn-processor-dlq"
+
+# DLQ の consumer は D1 に error を書くだけ。書けないときは D1 の復旧を待てるよう、
+# 5 分おきに最大 100 回（約 8 時間）再配信する。既定の 3 回では短い障害でも項目が enqueued のまま残る。
+[[queues.consumers]]
+queue = "hn-processor-dlq"
+max_retries = 100
 retry_delay = 300
 
 [observability.logs]

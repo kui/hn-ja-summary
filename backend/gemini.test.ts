@@ -1,6 +1,6 @@
 import { SummaryFormatError } from "@hn-feed/shared/summary";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GeminiUnavailableError, generateSummary, MODEL } from "./gemini.ts";
+import { GeminiRejectedError, generateSummary, MODEL } from "./gemini.ts";
 
 const VALID_DOC = {
   jaTitle: "日本語タイトル",
@@ -89,32 +89,26 @@ describe("generateSummary", () => {
     expect(init?.signal).toBe(timeout.mock.results[0]!.value);
   });
 
-  it.each([408, 429, 500, 502, 503, 504])(
-    "%i は一時的なエラーとして GeminiUnavailableError を投げる",
+  it.each([400, 408, 429, 500, 503, 504])(
+    "%i は再試行の対象として GeminiRejectedError 以外を投げる",
     async (status) => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         new Response("busy", { status }),
       );
-      await expect(summarize()).rejects.toThrow(GeminiUnavailableError);
+      const err = await summarize().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(GeminiRejectedError);
     },
   );
 
   it.each([
     ["タイムアウト", new DOMException("timed out", "TimeoutError")],
     ["接続切れ", new TypeError("Network connection lost.")],
-  ])("fetch の%sは GeminiUnavailableError になる", async (_, error) => {
+  ])("fetch の%sは再試行の対象になる", async (_, error) => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(error);
-    await expect(summarize()).rejects.toThrow(GeminiUnavailableError);
-  });
-
-  it("本文の読み込み中のタイムアウトも GeminiUnavailableError になる", async () => {
-    const body = new ReadableStream({
-      start(controller) {
-        controller.error(new DOMException("timed out", "TimeoutError"));
-      },
-    });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body));
-    await expect(summarize()).rejects.toThrow(GeminiUnavailableError);
+    const err = await summarize().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(GeminiRejectedError);
   });
 
   it("形式不正ならその場で作り直さず SummaryFormatError を投げる", async () => {
@@ -161,23 +155,41 @@ describe("generateSummary", () => {
     },
   );
 
-  it("安全性フィルタなどで止まったら再試行しないエラーにする", async () => {
+  it.each([
+    "SAFETY",
+    "RECITATION",
+    "LANGUAGE",
+    "BLOCKLIST",
+    "PROHIBITED_CONTENT",
+    "SPII",
+  ])(
+    "出力が %s で止められたら再試行しない GeminiRejectedError を投げる",
+    async (finishReason) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        geminiOk({ finishReason }),
+      );
+      await expect(summarize()).rejects.toThrow(GeminiRejectedError);
+    },
+  );
+
+  it("プロンプトが安全性フィルタで止められたら GeminiRejectedError を投げる", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      geminiOk({ finishReason: "SAFETY" }),
+      Response.json({ promptFeedback: { blockReason: "SAFETY" } }),
     );
-    const err = await summarize().catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect(err).not.toBeInstanceOf(SummaryFormatError);
-    expect(err).not.toBeInstanceOf(GeminiUnavailableError);
+    await expect(summarize()).rejects.toThrow(GeminiRejectedError);
   });
 
-  it("その他のエラーステータスは一時的なエラーとして扱わない", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("bad request", { status: 400 }),
-    );
+  it.each([
+    ["OTHER で止まった出力", { candidates: [{ finishReason: "OTHER" }] }],
+    [
+      "理由が不明なプロンプトの拒否",
+      { promptFeedback: { blockReason: "OTHER" } },
+    ],
+  ])("%sは許可リストにないので再試行の対象になる", async (_, body) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(body));
     const err = await summarize().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
-    expect(err).not.toBeInstanceOf(GeminiUnavailableError);
+    expect(err).not.toBeInstanceOf(GeminiRejectedError);
   });
 
   it("Flex で処理されなかったら警告を出す", async () => {

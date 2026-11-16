@@ -1,6 +1,6 @@
 import { fetchCandidateStories } from "@hn-feed/shared/hn";
 import { meetsVelocity } from "@hn-feed/shared/filter";
-import { batchGetStates, setEnqueued } from "@hn-feed/shared/state";
+import { batchGetStates, enqueue } from "@hn-feed/shared/state";
 
 export async function scheduled(
   _event: ScheduledController,
@@ -27,19 +27,15 @@ export async function scheduled(
 
   const toEnqueue = candidates.filter((i) => {
     const state = states.get(i.id);
-    return state === undefined || state === "error";
+    return state === undefined;
   });
   console.log(`${toEnqueue.length} items to enqueue`);
 
   let enqueued = 0;
   for (const item of toEnqueue) {
-    try {
-      await env.QUEUE.send({ itemId: item.id });
-      await setEnqueued(env.DB, item.id);
+    if (await enqueue(env, item.id)) {
       enqueued++;
       console.log(`Enqueued ${item.id}: ${item.title}`);
-    } catch (err) {
-      console.error(`Failed to enqueue ${item.id}:`, err);
     }
   }
 

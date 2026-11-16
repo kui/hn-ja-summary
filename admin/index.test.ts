@@ -1,4 +1,14 @@
-import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  inject,
+  it,
+  vi,
+} from "vitest";
+import { Temporal } from "temporal-polyfill";
 import { applyD1Migrations, env, type D1Migration } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
 
@@ -70,6 +80,21 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM processed_items").run();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+async function insertEnqueued(id: number, hoursAgo: number): Promise<void> {
+  const enqueuedAt =
+    Temporal.Now.instant().epochMilliseconds - hoursAgo * 60 * 60 * 1000;
+  await env.DB.prepare(
+    `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, enqueued_at_ms)
+     VALUES (?, 'enqueued', 1, 1, ?)`,
+  )
+    .bind(id, enqueuedAt)
+    .run();
+}
+
 describe("GET /enqueue", () => {
   it("id クエリを入力欄の値としてエスケープする", async () => {
     const res = await exports.default.fetch(
@@ -106,20 +131,33 @@ describe("POST /enqueue", () => {
     expect(await storedState(123)).toBe("enqueued");
   });
 
-  it("失敗が続いた項目は失敗回数を戻してキューに戻す", async () => {
-    await env.DB.prepare(
-      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, error_count)
-       VALUES (123, 'failed', 1, 1, 3)`,
-    ).run();
+  it("投入から 6 時間以内のキュー待ちは受け付けない", async () => {
+    await insertEnqueued(123, 1);
 
-    await postEnqueue("123");
+    const res = await postEnqueue("123");
 
-    const row = await env.DB.prepare(
-      "SELECT state, error_count FROM processed_items WHERE id = ?",
-    )
-      .bind(123)
-      .first();
-    expect(row).toEqual({ state: "enqueued", error_count: 0 });
+    expect(await res.text()).toContain("既にキュー待ち");
+  });
+
+  // メッセージが失われ、poller も拾わない状態で残った項目を戻す手段
+  it("投入から 6 時間を過ぎたキュー待ちは投入し直す", async () => {
+    await insertEnqueued(123, 7);
+    const send = vi.spyOn(env.QUEUE, "send");
+
+    const res = await postEnqueue("123");
+
+    expect(await res.text()).toContain("キューに追加しました");
+    expect(send).toHaveBeenCalledWith({ itemId: 123 });
+  });
+
+  it("送信に失敗したら error にして、投入し直せるようにする", async () => {
+    vi.spyOn(env.QUEUE, "send").mockRejectedValue(new Error("queue is down"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await postEnqueue("123");
+
+    expect(await res.text()).toContain("キューに追加できませんでした");
+    expect(await storedState(123)).toBe("error");
   });
 
   it("同じオリジンからの POST はキューに追加する", async () => {

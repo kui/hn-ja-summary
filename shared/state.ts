@@ -1,20 +1,10 @@
 import { Temporal } from "temporal-polyfill";
 
-// enqueued: poller がキュー追加済み（リトライ中を含む）
+// enqueued: poller がキュー追加済み（リトライ中を含む）。error_message には再試行に回した最後のエラーを残す
 // completed: processor が D1 への書き込みまで成功
-// error: processor が処理失敗（次回 poller 実行時に再エンキュー）
-// failed: error が MAX_ERRORS 回続いた。poller は再エンキューせず、admin からの手動投入だけ受け付ける
+// error: 再試行しても通らない失敗か、Queue の再配信を使い切った。poller は再エンキューせず、admin から手動で投入し直す
 // skipped: processor が意図的にスキップ（HN アイテム消滅など）
-export type ItemState =
-  | "enqueued"
-  | "completed"
-  | "error"
-  | "failed"
-  | "skipped";
-
-// 恒久的な失敗（SAFETY ブロックなど）でも poller は 30 分ごとに再投入するので、
-// 失敗の種類によらず Gemini と Firecrawl の呼び出し回数に上限をかける
-export const MAX_ERRORS = 3;
+export type ItemState = "enqueued" | "completed" | "error" | "skipped";
 
 export async function batchGetStates(
   db: D1Database,
@@ -31,12 +21,7 @@ export async function batchGetStates(
   return new Map(results.map((r) => [r.id, r.state]));
 }
 
-// resetErrorCount: admin からの手動投入で使う。failed の項目にもう一度 MAX_ERRORS 回の機会を与える
-export async function setEnqueued(
-  db: D1Database,
-  id: number,
-  { resetErrorCount = false }: { resetErrorCount?: boolean } = {},
-): Promise<void> {
+export async function setEnqueued(db: D1Database, id: number): Promise<void> {
   const now = Temporal.Now.instant().epochMilliseconds;
   await db
     .prepare(
@@ -46,9 +31,9 @@ export async function setEnqueued(
          state = 'enqueued',
          enqueued_at_ms = excluded.enqueued_at_ms,
          updated_at_ms = excluded.updated_at_ms,
-         error_count = CASE WHEN ? THEN 0 ELSE error_count END`,
+         error_message = NULL`,
     )
-    .bind(id, now, now, now, resetErrorCount ? 1 : 0)
+    .bind(id, now, now, now)
     .run();
 }
 
@@ -61,13 +46,14 @@ export async function setCompleted(db: D1Database, id: number): Promise<void> {
        ON CONFLICT(id) DO UPDATE SET
          state = 'completed',
          completed_at_ms = excluded.completed_at_ms,
-         updated_at_ms = excluded.updated_at_ms,
-         error_count = 0`,
+         updated_at_ms = excluded.updated_at_ms`,
     )
     .bind(id, now, now, now)
     .run();
 }
 
+// 同じ項目のメッセージが 2 つ Queue にあると、片方が終えた completed などをもう片方の失敗が
+// 上書きしうるので、enqueued の行だけを error にする
 export async function setError(
   db: D1Database,
   id: number,
@@ -76,15 +62,53 @@ export async function setError(
   const now = Temporal.Now.instant().epochMilliseconds;
   await db
     .prepare(
-      `INSERT INTO processed_items (id, state, created_at_ms, error_message, updated_at_ms, error_count)
-       VALUES (?1, 'error', ?3, ?4, ?3, 1)
+      `INSERT INTO processed_items (id, state, created_at_ms, error_message, updated_at_ms)
+       VALUES (?, 'error', ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         state = CASE WHEN error_count + 1 >= ?2 THEN 'failed' ELSE 'error' END,
+         state = 'error',
          error_message = excluded.error_message,
-         updated_at_ms = excluded.updated_at_ms,
-         error_count = error_count + 1`,
+         updated_at_ms = excluded.updated_at_ms
+       WHERE state = 'enqueued'`,
     )
-    .bind(id, MAX_ERRORS, now, message)
+    .bind(id, now, message, now)
+    .run();
+}
+
+// 再配信を使い切ったときに使う。最後の原因は setLastError で残っているので上書きしない。
+// 15 分の上限で打ち切られた配信は catch を通らないので、残っていないこともある
+export async function setRetriesExhausted(
+  db: D1Database,
+  id: number,
+  fallbackMessage: string,
+): Promise<void> {
+  const now = Temporal.Now.instant().epochMilliseconds;
+  await db
+    .prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, error_message, updated_at_ms)
+       VALUES (?, 'error', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         state = 'error',
+         error_message = COALESCE(error_message, excluded.error_message),
+         updated_at_ms = excluded.updated_at_ms
+       WHERE state = 'enqueued'`,
+    )
+    .bind(id, now, fallbackMessage, now)
+    .run();
+}
+
+// 再試行に回すエラーを残す。状態は enqueued のまま変えない
+export async function setLastError(
+  db: D1Database,
+  id: number,
+  message: string,
+): Promise<void> {
+  const now = Temporal.Now.instant().epochMilliseconds;
+  await db
+    .prepare(
+      `UPDATE processed_items SET error_message = ?, updated_at_ms = ?
+       WHERE id = ? AND state = 'enqueued'`,
+    )
+    .bind(message, now, id)
     .run();
 }
 
@@ -105,4 +129,32 @@ export async function setSkipped(
     )
     .bind(id, now, reason, now)
     .run();
+}
+
+// 先に enqueued にしてから送る。送ってから書くと、処理が先に終わったとき結果を enqueued で上書きしうる。
+// 送信に失敗したら error にして、admin から投入し直せるようにする
+export async function enqueue(
+  env: { DB: D1Database; QUEUE: Queue },
+  id: number,
+): Promise<boolean> {
+  try {
+    await setEnqueued(env.DB, id);
+  } catch (err) {
+    console.error(`Failed to mark ${id} as enqueued:`, err);
+    return false;
+  }
+  try {
+    await env.QUEUE.send({ itemId: id });
+    return true;
+  } catch (err) {
+    console.error(`Failed to send ${id} to the queue:`, err);
+    await setError(
+      env.DB,
+      id,
+      `Queue への送信に失敗した: ${String(err)}`,
+    ).catch((dbErr: unknown) => {
+      console.error(`Failed to record error state for ${id}:`, dbErr);
+    });
+    return false;
+  }
 }

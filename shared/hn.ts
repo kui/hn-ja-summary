@@ -121,7 +121,11 @@ export async function fetchHNItemWithComments(
   const resp = await fetch(`${ALGOLIA_API}/items/${itemId}`, {
     signal: AbortSignal.timeout(ITEM_FETCH_TIMEOUT_MS),
   });
-  if (!resp.ok) return null;
+  // 投稿がないときだけ null を返す。ほかのエラーは一時的な障害でありうるので、投げて再試行に回す
+  if (resp.status === 404) return null;
+  if (!resp.ok) {
+    throw new Error(`Algolia items API error: ${resp.status}`);
+  }
   const item = await resp.json<AlgoliaItem>();
 
   // items/:id は dead なコメントとその下の返信をツリーから除くので、検索 API で補う

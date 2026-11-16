@@ -1,5 +1,6 @@
 import { escapeHtml } from "@hn-feed/shared/html";
-import { setEnqueued, type ItemState } from "@hn-feed/shared/state";
+import { Temporal } from "temporal-polyfill";
+import { enqueue, type ItemState } from "@hn-feed/shared/state";
 
 const PAGE_STYLE = `
 :root{color-scheme:light dark;--text:#222;--bg:#fafafa;--input-border:#767676;--ok-bg:#e8f5e9;--ok-border:#a5d6a7;--warn-bg:#fff8e1;--warn-border:#ffe082;--error-bg:#ffebee;--error-border:#ef9a9a}
@@ -13,6 +14,17 @@ button{margin-top:8px;padding:8px 20px;font:inherit;cursor:pointer}
 .result.warn{background:var(--warn-bg);border:1px solid var(--warn-border)}
 .result.error{background:var(--error-bg);border:1px solid var(--error-border)}
 `;
+
+// 1 回の投入で再配信が続くのは長くても約 3 時間（15 分 × 7 回の配信と、倍々の遅延の合計 63 分）。
+// それより十分長く enqueued のままなら、メッセージは失われたとみなして投入し直せるようにする
+const STALE_ENQUEUED_MS = 6 * 60 * 60 * 1000;
+
+function isStale(enqueuedAtMs: number | null): boolean {
+  if (enqueuedAtMs === null) return true;
+  return (
+    Temporal.Now.instant().epochMilliseconds - enqueuedAtMs > STALE_ENQUEUED_MS
+  );
+}
 
 function parseItemId(input: string): number | null {
   const trimmed = input.trim();
@@ -107,14 +119,14 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
   }
 
   const existing = await env.DB.prepare(
-    "SELECT state FROM processed_items WHERE id = ?",
+    "SELECT state, enqueued_at_ms FROM processed_items WHERE id = ?",
   )
     .bind(itemId)
-    .first<{ state: ItemState }>();
+    .first<{ state: ItemState; enqueued_at_ms: number | null }>();
 
   const prevState = existing?.state;
 
-  if (prevState === "enqueued") {
+  if (prevState === "enqueued" && !isStale(existing?.enqueued_at_ms ?? null)) {
     return renderEnqueuePage(
       `<div class="result warn">ID ${itemId} は既にキュー待ち（enqueued）です。</div>`,
     );
@@ -122,8 +134,11 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
 
   const isReprocess = prevState === "completed";
 
-  await setEnqueued(env.DB, itemId, { resetErrorCount: true });
-  await env.QUEUE.send({ itemId });
+  if (!(await enqueue(env, itemId))) {
+    return renderEnqueuePage(
+      `<div class="result error">ID ${itemId} をキューに追加できませんでした。</div>`,
+    );
+  }
 
   const action = isReprocess ? "再処理" : "処理";
   const prevNote = prevState ? ` (前の状態: ${prevState})` : "";

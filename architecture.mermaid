@@ -17,6 +17,7 @@ graph TB
         end
 
         QUEUE[("Queue<br/>hn-processor")]
+        DLQ[("Queue<br/>hn-processor-dlq")]
         DB[("D1 Database<br/>hn-feed")]
     end
 
@@ -41,6 +42,8 @@ graph TB
     POLLER -->|"処理状態チェック"| DB
 
     QUEUE --> PROCESSOR
+    QUEUE -->|"再試行を使い切った"| DLQ
+    DLQ -->|"error にする"| PROCESSOR
 
     POLLER -->|"候補記事を検索"| HN
     PROCESSOR -->|"記事+コメント取得"| HN
@@ -57,5 +60,5 @@ graph TB
 
     class HN,ARTICLE,FIRECRAWL,WAYBACK,GEMINI ext
     class POLLER,PROCESSOR,FEED_HTML,FEED_RSS,ADMIN worker
-    class QUEUE,DB storage
+    class QUEUE,DLQ,DB storage
     class USER,ADMIN_USER,CRON user
