@@ -21,19 +21,25 @@ export async function batchGetStates(
   return new Map(results.map((r) => [r.id, r.state]));
 }
 
-export async function setEnqueued(db: D1Database, id: number): Promise<void> {
-  const now = Temporal.Now.instant().epochMilliseconds;
+// Queue に送ってから呼ぶ。先に書くと、送信に失敗したとき誰も拾わない enqueued が残る。
+// 送ったあとに processor が先に結果を書いていたら（sentAtMs 以降に更新されていたら）上書きしない
+export async function setEnqueued(
+  db: D1Database,
+  id: number,
+  sentAtMs: number,
+): Promise<void> {
   await db
     .prepare(
       `INSERT INTO processed_items (id, state, created_at_ms, enqueued_at_ms, updated_at_ms)
-       VALUES (?, 'enqueued', ?, ?, ?)
+       VALUES (?1, 'enqueued', ?2, ?2, ?2)
        ON CONFLICT(id) DO UPDATE SET
          state = 'enqueued',
          enqueued_at_ms = excluded.enqueued_at_ms,
          updated_at_ms = excluded.updated_at_ms,
-         error_message = NULL`,
+         error_message = NULL
+       WHERE updated_at_ms < ?2`,
     )
-    .bind(id, now, now, now)
+    .bind(id, sentAtMs)
     .run();
 }
 
@@ -46,7 +52,8 @@ export async function setCompleted(db: D1Database, id: number): Promise<void> {
        ON CONFLICT(id) DO UPDATE SET
          state = 'completed',
          completed_at_ms = excluded.completed_at_ms,
-         updated_at_ms = excluded.updated_at_ms`,
+         updated_at_ms = excluded.updated_at_ms,
+         error_message = NULL`,
     )
     .bind(id, now, now, now)
     .run();
@@ -129,32 +136,4 @@ export async function setSkipped(
     )
     .bind(id, now, reason, now)
     .run();
-}
-
-// 先に enqueued にしてから送る。送ってから書くと、処理が先に終わったとき結果を enqueued で上書きしうる。
-// 送信に失敗したら error にして、admin から投入し直せるようにする
-export async function enqueue(
-  env: { DB: D1Database; QUEUE: Queue },
-  id: number,
-): Promise<boolean> {
-  try {
-    await setEnqueued(env.DB, id);
-  } catch (err) {
-    console.error(`Failed to mark ${id} as enqueued:`, err);
-    return false;
-  }
-  try {
-    await env.QUEUE.send({ itemId: id });
-    return true;
-  } catch (err) {
-    console.error(`Failed to send ${id} to the queue:`, err);
-    await setError(
-      env.DB,
-      id,
-      `Queue への送信に失敗した: ${String(err)}`,
-    ).catch((dbErr: unknown) => {
-      console.error(`Failed to record error state for ${id}:`, dbErr);
-    });
-    return false;
-  }
 }

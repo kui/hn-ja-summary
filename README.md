@@ -25,7 +25,7 @@ CF Queues (hn-processor, 1 回の実行で 1 件)
         ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
         ├─ 検証して HTML を組み立て
         │    └─ 失敗はその場で作り直さず、キューで遅延を倍々に延ばして再試行 (最大 6 回)
-        │       Gemini の安全性フィルタなど、再試行しても通らない失敗だけはすぐ error にする
+        │       Gemini がプロンプトを安全性フィルタで止めたときなど、再試行しても通らない失敗だけはすぐ error にする
         └─ D1: feed_items / processed_items 更新
 
 CF Queues (hn-processor-dlq, 再試行を使い切ったメッセージ)
@@ -183,7 +183,7 @@ npm -w admin run dev
 
 ## 処理を諦めた項目
 
-`error` の項目は poller が再投入しない。再試行しても通らない失敗（Gemini の安全性フィルタなど）か、
+`error` の項目は poller が再投入しない。再試行しても通らない失敗（Gemini がプロンプトを安全性フィルタで止めたときなど）か、
 キューの再試行を使い切ったもの。`error_message` には、最後に再試行に回したときのエラーが残る。
 次のコマンドで一覧を出し、原因を直したあとに管理 UI の「エンキュー」から投入し直す。
 
@@ -191,5 +191,5 @@ npm -w admin run dev
 npm -w feed exec -- wrangler d1 execute hn-feed --remote --command "SELECT id, error_message FROM processed_items WHERE state = 'error' ORDER BY updated_at_ms DESC"
 ```
 
-投入から 6 時間を過ぎても `enqueued` のままの項目は、メッセージが失われている。
+投入から 12 時間を過ぎても `enqueued` のままの項目は、メッセージが失われている。
 管理 UI の「エンキュー」から投入し直せる。

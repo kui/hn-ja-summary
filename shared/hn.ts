@@ -96,8 +96,7 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
     `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&hitsPerPage=${MAX_HITS_PER_PAGE}`,
   );
   if (!resp.ok) {
-    console.error(`Algolia search failed: ${resp.status}`);
-    return [];
+    throw new Error(`Algolia search API error: ${resp.status}`);
   }
   const res = await resp.json<AlgoliaSearchResponse<AlgoliaSearchHit>>();
 

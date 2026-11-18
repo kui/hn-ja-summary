@@ -83,15 +83,9 @@ function responseSchema(hasArticle: boolean) {
   };
 }
 
-// 同じ記事とコメントを送れば毎回同じ理由で止められるもの。OTHER のように理由が分からないものは載せない
-const REJECTED_FINISH_REASONS = new Set([
-  "SAFETY",
-  "RECITATION",
-  "LANGUAGE",
-  "BLOCKLIST",
-  "PROHIBITED_CONTENT",
-  "SPII",
-]);
+// プロンプトの判定は入力だけで決まるので、同じ記事とコメントを送れば毎回同じ理由で止められる。
+// 出力側の finishReason（SAFETY など）は生成した文章への判定で、生成し直すと通ることがあるので再試行に回す。
+// 理由が分からない OTHER も載せない
 const REJECTED_BLOCK_REASONS = new Set([
   "SAFETY",
   "BLOCKLIST",
@@ -206,14 +200,6 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   if (blockReason !== undefined && REJECTED_BLOCK_REASONS.has(blockReason)) {
     throw new GeminiRejectedError(
       `Gemini blocked the prompt: blockReason=${blockReason}`,
-    );
-  }
-  if (
-    candidate?.finishReason !== undefined &&
-    REJECTED_FINISH_REASONS.has(candidate.finishReason)
-  ) {
-    throw new GeminiRejectedError(
-      `Gemini blocked the output: finishReason=${candidate.finishReason}`,
     );
   }
   if (candidate?.finishReason === "MAX_TOKENS") {

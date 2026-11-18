@@ -131,7 +131,7 @@ describe("POST /enqueue", () => {
     expect(await storedState(123)).toBe("enqueued");
   });
 
-  it("投入から 6 時間以内のキュー待ちは受け付けない", async () => {
+  it("投入から 12 時間以内のキュー待ちは受け付けない", async () => {
     await insertEnqueued(123, 1);
 
     const res = await postEnqueue("123");
@@ -140,8 +140,8 @@ describe("POST /enqueue", () => {
   });
 
   // メッセージが失われ、poller も拾わない状態で残った項目を戻す手段
-  it("投入から 6 時間を過ぎたキュー待ちは投入し直す", async () => {
-    await insertEnqueued(123, 7);
+  it("投入から 12 時間を過ぎたキュー待ちは投入し直す", async () => {
+    await insertEnqueued(123, 13);
     const send = vi.spyOn(env.QUEUE, "send");
 
     const res = await postEnqueue("123");
@@ -150,14 +150,29 @@ describe("POST /enqueue", () => {
     expect(send).toHaveBeenCalledWith({ itemId: 123 });
   });
 
-  it("送信に失敗したら error にして、投入し直せるようにする", async () => {
+  // 状態を変える前に止まるので、もう一度送れば投入できる
+  it("送信に失敗したら状態を変えずに失敗する", async () => {
     vi.spyOn(env.QUEUE, "send").mockRejectedValue(new Error("queue is down"));
-    vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const res = await postEnqueue("123");
+    await expect(postEnqueue("123")).rejects.toThrow("queue is down");
+    expect(await storedState(123)).toBeNull();
+  });
 
-    expect(await res.text()).toContain("キューに追加できませんでした");
-    expect(await storedState(123)).toBe("error");
+  // 前回の投入のエラーが残ると、DLQ で諦めたときの原因を取り違える
+  it("投入し直すと前回のエラーを消す", async () => {
+    await env.DB.prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, error_message)
+       VALUES (123, 'error', 1, 1, 'Gemini API error: 503')`,
+    ).run();
+
+    await postEnqueue("123");
+
+    const row = await env.DB.prepare(
+      "SELECT state, error_message FROM processed_items WHERE id = ?",
+    )
+      .bind(123)
+      .first();
+    expect(row).toEqual({ state: "enqueued", error_message: null });
   });
 
   it("同じオリジンからの POST はキューに追加する", async () => {

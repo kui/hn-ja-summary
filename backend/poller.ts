@@ -1,6 +1,7 @@
 import { fetchCandidateStories } from "@hn-feed/shared/hn";
 import { meetsVelocity } from "@hn-feed/shared/filter";
-import { batchGetStates, enqueue } from "@hn-feed/shared/state";
+import { Temporal } from "temporal-polyfill";
+import { batchGetStates, setEnqueued } from "@hn-feed/shared/state";
 
 export async function scheduled(
   _event: ScheduledController,
@@ -31,13 +32,13 @@ export async function scheduled(
   });
   console.log(`${toEnqueue.length} items to enqueue`);
 
-  let enqueued = 0;
+  // 送信や D1 への書き込みが失敗したら例外のまま止める。行を書く前に止まった項目は、次の実行でまた候補になる
   for (const item of toEnqueue) {
-    if (await enqueue(env, item.id)) {
-      enqueued++;
-      console.log(`Enqueued ${item.id}: ${item.title}`);
-    }
+    const sentAtMs = Temporal.Now.instant().epochMilliseconds;
+    await env.QUEUE.send({ itemId: item.id });
+    await setEnqueued(env.DB, item.id, sentAtMs);
+    console.log(`Enqueued ${item.id}: ${item.title}`);
   }
 
-  console.log(`Done. Enqueued ${enqueued} items.`);
+  console.log(`Done. Enqueued ${toEnqueue.length} items.`);
 }

@@ -291,10 +291,10 @@ describe("fetchCandidateStories", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it("検索が失敗したら空配列を返す", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  // 例外のまま poller を止め、次の実行で取り直す
+  it("検索が失敗したら例外を投げる", async () => {
     mockSearch({}, 503);
-    expect(await fetchCandidateStories()).toEqual([]);
+    await expect(fetchCandidateStories()).rejects.toThrow("503");
   });
 });
 

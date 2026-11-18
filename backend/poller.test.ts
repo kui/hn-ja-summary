@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { Temporal } from "temporal-polyfill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setCompleted } from "@hn-feed/shared/state";
 import { scheduled } from "./poller.ts";
 
 const NEW_ID = 1;
@@ -72,22 +73,20 @@ describe("scheduled", () => {
     expect(await storedState(ERROR_ID)).toBe("error");
   });
 
-  // 送ってから書くと、処理が先に終わったとき結果を enqueued で上書きしうる
-  it("送る前に enqueued にする", async () => {
-    const statesAtSend: (string | null)[] = [];
+  it("送ったあとに processor が先に結果を書いていたら、enqueued で上書きしない", async () => {
     await poll(async ({ itemId }) => {
-      statesAtSend.push(await storedState(itemId));
+      await setCompleted(env.DB, itemId);
     });
-    expect(statesAtSend).toEqual(["enqueued"]);
+    expect(await storedState(NEW_ID)).toBe("completed");
   });
 
-  it("送信に失敗したら error にして、admin から投入し直せるようにする", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(
-      await poll(async () => {
+  // 行を書かずに止まるので、次の実行でまた候補になる
+  it("送信に失敗したら行を書かずに例外を投げる", async () => {
+    await expect(
+      poll(async () => {
         throw new Error("queue is down");
       }),
-    ).toEqual([]);
-    expect(await storedState(NEW_ID)).toBe("error");
+    ).rejects.toThrow("queue is down");
+    expect(await storedState(NEW_ID)).toBeNull();
   });
 });

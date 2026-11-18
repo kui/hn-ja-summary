@@ -98,6 +98,8 @@ describe("generateSummary", () => {
       const err = await summarize().catch((e: unknown) => e);
       expect(err).toBeInstanceOf(Error);
       expect(err).not.toBeInstanceOf(GeminiRejectedError);
+      // error_message に残るので、どの API のどのステータスかが分かるようにする
+      expect(String(err)).toContain(`Gemini API error: ${status}`);
     },
   );
 
@@ -163,21 +165,26 @@ describe("generateSummary", () => {
     "PROHIBITED_CONTENT",
     "SPII",
   ])(
-    "出力が %s で止められたら再試行しない GeminiRejectedError を投げる",
+    "出力が %s で止められても、生成し直せば通りうるので再試行の対象にする",
     async (finishReason) => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         geminiOk({ finishReason }),
       );
-      await expect(summarize()).rejects.toThrow(GeminiRejectedError);
+      const err = await summarize().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(GeminiRejectedError);
     },
   );
 
-  it("プロンプトが安全性フィルタで止められたら GeminiRejectedError を投げる", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({ promptFeedback: { blockReason: "SAFETY" } }),
-    );
-    await expect(summarize()).rejects.toThrow(GeminiRejectedError);
-  });
+  it.each(["SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT"])(
+    "プロンプトが %s で止められたら再試行しない GeminiRejectedError を投げる",
+    async (blockReason) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        Response.json({ promptFeedback: { blockReason } }),
+      );
+      await expect(summarize()).rejects.toThrow(GeminiRejectedError);
+    },
+  );
 
   it.each([
     ["OTHER で止まった出力", { candidates: [{ finishReason: "OTHER" }] }],

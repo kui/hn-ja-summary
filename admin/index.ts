@@ -1,6 +1,6 @@
 import { escapeHtml } from "@hn-feed/shared/html";
 import { Temporal } from "temporal-polyfill";
-import { enqueue, type ItemState } from "@hn-feed/shared/state";
+import { setEnqueued, type ItemState } from "@hn-feed/shared/state";
 
 const PAGE_STYLE = `
 :root{color-scheme:light dark;--text:#222;--bg:#fafafa;--input-border:#767676;--ok-bg:#e8f5e9;--ok-border:#a5d6a7;--warn-bg:#fff8e1;--warn-border:#ffe082;--error-bg:#ffebee;--error-border:#ef9a9a}
@@ -15,9 +15,11 @@ button{margin-top:8px;padding:8px 20px;font:inherit;cursor:pointer}
 .result.error{background:var(--error-bg);border:1px solid var(--error-border)}
 `;
 
-// 1 回の投入で再配信が続くのは長くても約 3 時間（15 分 × 7 回の配信と、倍々の遅延の合計 63 分）。
-// それより十分長く enqueued のままなら、メッセージは失われたとみなして投入し直せるようにする
-const STALE_ENQUEUED_MS = 6 * 60 * 60 * 1000;
+// 1 回の投入でメッセージが残るのは長くても約 11 時間。hn-processor での再配信が約 3 時間
+// （15 分 × 7 回の配信と、倍々の遅延の合計 63 分）、D1 に書けないときの DLQ での再配信が約 8 時間（5 分 × 100 回）。
+// それより長く enqueued のままなら、メッセージは失われたとみなして投入し直せるようにする。
+// 早すぎると、遅れて届いた DLQ のメッセージが投入し直した行を error にしてしまう
+const STALE_ENQUEUED_MS = 12 * 60 * 60 * 1000;
 
 function isStale(enqueuedAtMs: number | null): boolean {
   if (enqueuedAtMs === null) return true;
@@ -134,11 +136,9 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
 
   const isReprocess = prevState === "completed";
 
-  if (!(await enqueue(env, itemId))) {
-    return renderEnqueuePage(
-      `<div class="result error">ID ${itemId} をキューに追加できませんでした。</div>`,
-    );
-  }
+  const sentAtMs = Temporal.Now.instant().epochMilliseconds;
+  await env.QUEUE.send({ itemId });
+  await setEnqueued(env.DB, itemId, sentAtMs);
 
   const action = isReprocess ? "再処理" : "処理";
   const prevNote = prevState ? ` (前の状態: ${prevState})` : "";

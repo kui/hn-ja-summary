@@ -25,8 +25,12 @@ async function runQueue(queueName: string, testEnv: Env = env as Env) {
     ackAll: vi.fn(),
     retryAll: vi.fn(),
   } as unknown as MessageBatch<{ itemId: number }>;
-  await worker.queue(batch, testEnv);
-  return message;
+  // 投げた例外は Worker の外に出て、Queue が再配信する
+  const thrown = await worker.queue(batch, testEnv).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  return { ...message, thrown };
 }
 
 async function storedState(): Promise<string | null> {
@@ -55,7 +59,7 @@ describe("queue", () => {
     expect(await storedState()).toBe("error");
   });
 
-  it("dead letter queue で D1 に書けなければ ack せずに再配信させる", async () => {
+  it("dead letter queue で D1 に書けなければ ack せずに例外を投げ、再配信させる", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     const message = await runQueue(DEAD_LETTER_QUEUE, {
@@ -63,8 +67,8 @@ describe("queue", () => {
       DB: BROKEN_DB,
     } as unknown as Env);
 
+    expect(message.thrown).toBeInstanceOf(Error);
     expect(message.ack).not.toHaveBeenCalled();
-    expect(message.retry).toHaveBeenCalled();
   });
 
   it("dead letter queue では再試行に回したときのエラーを残す", async () => {

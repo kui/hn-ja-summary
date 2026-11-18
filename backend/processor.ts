@@ -16,7 +16,6 @@ import {
 import type { ArticleInput } from "./article";
 import { fetchArticleContent } from "./article";
 import { generateSummary, MODEL } from "./gemini";
-import { giveUp } from "./give-up";
 
 // 要約に含めるコメント最大数
 const MAX_COMMENTS = 100;
@@ -177,6 +176,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   console.log(`Done: ${itemId} — ${title}`);
 }
 
+// D1 に書けないなど、ここで投げた例外は ack も retry もされないので、Queue が retry_delay の間隔で再配信する
 export async function queue(
   batch: MessageBatch<{ itemId: number }>,
   env: Env,
@@ -185,28 +185,19 @@ export async function queue(
     const { itemId } = message.body;
     try {
       await processItem(itemId, env);
-      message.ack();
     } catch (err) {
-      const delaySeconds = retryDelaySeconds(message.attempts);
-      if (err instanceof PermanentError) {
-        console.error(`Permanent failure for ${itemId}, giving up:`, err);
-        // 書けずに再配信されると要約の処理を最初からやり直すので、ほかの再試行と同じ間隔を空ける
-        await giveUp(
-          message,
-          () => setError(env.DB, itemId, String(err)),
-          delaySeconds,
-        );
-      } else {
+      if (!(err instanceof PermanentError)) {
+        const delaySeconds = retryDelaySeconds(message.attempts);
         console.warn(
           `${String(err)} for ${itemId} (attempt ${message.attempts}), retrying in ${delaySeconds}s`,
         );
-        try {
-          await setLastError(env.DB, itemId, String(err));
-        } catch (dbErr) {
-          console.error("Failed to record last error:", dbErr);
-        }
+        await setLastError(env.DB, itemId, String(err));
         message.retry({ delaySeconds });
+        continue;
       }
+      console.error(`Permanent failure for ${itemId}, giving up:`, err);
+      await setError(env.DB, itemId, String(err));
     }
+    message.ack();
   }
 }
