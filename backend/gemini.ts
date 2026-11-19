@@ -10,7 +10,7 @@ import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
 export const MODEL = "gemini-3.5-flash-lite";
-// Flex はキュー待ちで数分かかる（目安 1〜15 分）。公式は 10 分以上のクライアント側タイムアウトを推奨。
+// Flex の待ち時間と推奨タイムアウト: https://ai.google.dev/gemini-api/docs/flex-inference
 // consumer の wall time 上限 15 分から HN・記事取得の時間を残す。
 // 失敗したらこの実行内では作り直さず、Queue の再試行に任せる。
 const GEMINI_TIMEOUT_MS = 12 * 60 * 1000;
