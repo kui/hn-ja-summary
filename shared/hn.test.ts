@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
 import {
   countComments,
   fetchCandidateStories,
@@ -241,6 +240,8 @@ describe("fetchCandidateStories", () => {
     };
   }
 
+  const CRITERIA = { searchWindowHours: 24, minAgeHours: 2, minComments: 40 };
+
   function mockSearch(body: unknown, status = 200) {
     return vi
       .spyOn(globalThis, "fetch")
@@ -249,28 +250,28 @@ describe("fetchCandidateStories", () => {
       );
   }
 
-  it("SEARCH_WINDOW_HOURS 前から MIN_AGE_HOURS 前までのコメント数の条件を満たす記事を 1 リクエストで取得する", async () => {
+  it("指定した期間とコメント数の条件を満たす記事を 1 リクエストで取得する", async () => {
     const now = 1_800_000_000;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(now * 1000);
     const fetchMock = mockSearch({ hits: [hit("1")], nbHits: 1 });
-    await fetchCandidateStories();
+    await fetchCandidateStories(CRITERIA);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const url = new URL(String(fetchMock.mock.calls[0][0]));
     expect(url.searchParams.get("hitsPerPage")).toBe("1000");
     expect(url.searchParams.get("numericFilters")!.split(",").sort()).toEqual(
       [
-        `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
-        `created_at_i<=${now - MIN_AGE_HOURS * 3600}`,
-        `num_comments>=${MIN_COMMENTS}`,
+        `created_at_i>=${now - 24 * 3600}`,
+        `created_at_i<=${now - 2 * 3600}`,
+        `num_comments>=40`,
       ].sort(),
     );
   });
 
   it("ヒットを HNItem に変換して返す", async () => {
     mockSearch({ hits: [hit("1"), hit("2")], nbHits: 2 });
-    const items = await fetchCandidateStories();
+    const items = await fetchCandidateStories(CRITERIA);
     expect(items.map((i) => i.id)).toEqual([1, 2]);
     expect(items[0]).toMatchObject({
       type: "story",
@@ -283,18 +284,36 @@ describe("fetchCandidateStories", () => {
   it("取り切れないときだけ警告する", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockSearch({ hits: [hit("1")], nbHits: 1 });
-    await fetchCandidateStories();
+    await fetchCandidateStories(CRITERIA);
     expect(warn).not.toHaveBeenCalled();
 
     mockSearch({ hits: [hit("1")], nbHits: 1001 });
-    await fetchCandidateStories();
+    await fetchCandidateStories(CRITERIA);
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
   // 例外のまま poller を止め、次の実行で取り直す
   it("検索が失敗したら例外を投げる", async () => {
     mockSearch({}, 503);
-    await expect(fetchCandidateStories()).rejects.toThrow("503");
+    await expect(fetchCandidateStories(CRITERIA)).rejects.toThrow("503");
+  });
+
+  it("検索にタイムアウトを設定する", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = mockSearch({ hits: [], nbHits: 0 });
+    await fetchCandidateStories(CRITERIA);
+
+    const signal = fetchMock.mock.calls[0][1]?.signal;
+    const i = timeout.mock.results.findIndex((r) => r.value === signal);
+    expect(timeout.mock.calls[i]).toEqual([30_000]);
+  });
+
+  // 空の結果にすると、障害で投入が止まっていることがログに残らない
+  it("打ち切られたら例外を投げる", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new DOMException("timed out", "TimeoutError"),
+    );
+    await expect(fetchCandidateStories(CRITERIA)).rejects.toThrow("timed out");
   });
 });
 
@@ -496,12 +515,49 @@ describe("fetchHNItemWithComments", () => {
     expect(item!.children!.map((c) => c.id)).toEqual([2]);
   });
 
-  it("ツリーの取得に失敗したら検索せず null を返す", async () => {
+  it("ストーリーの取得を待たずに検索を始める", async () => {
+    let resolveItem!: (resp: Response) => void;
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockImplementation(async () => new Response("", { status: 404 }));
+      .mockImplementation((input) =>
+        String(input).includes("/search_by_date")
+          ? Promise.resolve(Response.json({ hits: [hit(2, STORY_ID)] }))
+          : new Promise((resolve) => (resolveItem = resolve)),
+      );
+    const pending = fetchHNItemWithComments(STORY_ID);
 
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    resolveItem(
+      Response.json({
+        id: STORY_ID,
+        title: "story",
+        url: null,
+        text: null,
+        author: "alice",
+        points: 1,
+        created_at: "",
+        children: [],
+      }),
+    );
+    const item = await pending;
+    expect(item!.children!.map((c) => c.id)).toEqual([2]);
+  });
+
+  it("ストーリーが 404 なら検索結果があっても null を返す", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).includes("/search_by_date")
+        ? Response.json({ hits: [hit(2, STORY_ID)] })
+        : new Response("not found", { status: 404 }),
+    );
     expect(await fetchHNItemWithComments(STORY_ID)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ストーリーの取得が失敗したら検索が成功しても例外を投げる", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).includes("/search_by_date")
+        ? Response.json({ hits: [hit(2, STORY_ID)] })
+        : new Response("error", { status: 503 }),
+    );
+    await expect(fetchHNItemWithComments(STORY_ID)).rejects.toThrow("503");
   });
 });
