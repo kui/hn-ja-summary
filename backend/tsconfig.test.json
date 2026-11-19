@@ -1,11 +1,5 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    // vitest.config.ts は Node で実行するので node の型を入れる。node の型は
-    // worker-configuration.d.ts の Workers ランタイム型と宣言が重なるため、.d.ts 同士は比べない
-    "skipLibCheck": true,
-    "types": ["node", "@cloudflare/vitest-pool-workers/types"]
-  },
+  "extends": ["./tsconfig.json", "../tsconfig.worker-test.json"],
   "include": ["./**/*.ts"],
   "exclude": []
 }
