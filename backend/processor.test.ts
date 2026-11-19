@@ -16,16 +16,38 @@ const ALGOLIA_ITEM = {
   children: [],
 };
 
-function mockFetch(gemini: () => Response) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = String(input);
+// HN 以外への fetch はすべて other が受ける
+function mockFetch(
+  other: (url: string) => Response,
+  algoliaItem: object = ALGOLIA_ITEM,
+) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = input instanceof Request ? input.url : String(input);
     if (url.startsWith("https://hn.algolia.com/api/v1/search_by_date")) {
       return Response.json({ hits: [] });
     }
     if (url.startsWith("https://hn.algolia.com/")) {
-      return Response.json(ALGOLIA_ITEM);
+      return Response.json(algoliaItem);
     }
-    return gemini();
+    return other(url);
+  });
+}
+
+function geminiSummary(usage: object = {}) {
+  const doc = {
+    jaTitle: "日本語タイトル",
+    articleHtml: "<p>記事の要約。</p>",
+    hnOverviewHtml: "<p>議論の総括。</p>",
+    topics: [{ heading: "観点1", bodyHtml: "<ul><li>要点</li></ul>" }],
+  };
+  return Response.json({
+    candidates: [
+      {
+        content: { parts: [{ text: JSON.stringify(doc) }] },
+        finishReason: "STOP",
+      },
+    ],
+    usageMetadata: usage,
   });
 }
 
@@ -65,8 +87,20 @@ async function itemState(): Promise<string | null> {
     .first<string>("state");
 }
 
+async function storedArticle(): Promise<{
+  article_url: string;
+  article_fetch_method: string;
+} | null> {
+  return env.DB.prepare(
+    "SELECT article_url, article_fetch_method FROM feed_items WHERE id = ?",
+  )
+    .bind(ITEM_ID)
+    .first();
+}
+
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM processed_items").run();
+  await env.DB.prepare("DELETE FROM feed_items").run();
 });
 
 afterEach(() => {
@@ -95,27 +129,13 @@ describe("queue", () => {
   );
 
   it("要約できたらトークン数を出力と思考に分けて記録する", async () => {
-    const doc = {
-      jaTitle: "日本語タイトル",
-      articleHtml: "<p>記事の要約。</p>",
-      hnOverviewHtml: "<p>議論の総括。</p>",
-      topics: [{ heading: "観点1", bodyHtml: "<ul><li>要点</li></ul>" }],
-    };
     mockFetch(() =>
-      Response.json({
-        candidates: [
-          {
-            content: { parts: [{ text: JSON.stringify(doc) }] },
-            finishReason: "STOP",
-          },
-        ],
-        usageMetadata: {
-          promptTokenCount: 100,
-          candidatesTokenCount: 50,
-          thoughtsTokenCount: 30,
-          totalTokenCount: 180,
-          serviceTier: "flex",
-        },
+      geminiSummary({
+        promptTokenCount: 100,
+        candidatesTokenCount: 50,
+        thoughtsTokenCount: 30,
+        totalTokenCount: 180,
+        serviceTier: "flex",
       }),
     );
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -223,6 +243,65 @@ describe("queue", () => {
     expect(message.ack).not.toHaveBeenCalled();
     expect(message.retry).not.toHaveBeenCalled();
   });
+
+  // https:example.com はブラウザが href で相対パスとして解決するので、正規化して保存する
+  it.each([
+    ["https://example.com/article", "https://example.com/article"],
+    ["https:example.com/article", "https://example.com/article"],
+  ])(
+    "記事 URL が %s なら %s を保存し、本文を取得する",
+    async (url, articleUrl) => {
+      const fetch = mockFetch(
+        (url) =>
+          url === articleUrl
+            ? new Response("<html><body><p>article</p></body></html>", {
+                headers: { "Content-Type": "text/html" },
+              })
+            : geminiSummary(),
+        { ...ALGOLIA_ITEM, url },
+      );
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const message = await runQueue(1);
+
+      expect(message.ack).toHaveBeenCalled();
+      expect(fetch.mock.calls.map(([input]) => String(input))).toContain(
+        articleUrl,
+      );
+      expect((await storedArticle())?.article_url).toBe(articleUrl);
+    },
+  );
+
+  // リンクとして配信するので、javascript: などを href に入れない
+  it.each(["javascript:alert(1)", "data:text/html,<p>x</p>", "not a url"])(
+    "記事 URL が %s なら HN の URL にし、本文を取得しない",
+    async (url) => {
+      const fetch = mockFetch(() => geminiSummary(), {
+        ...ALGOLIA_ITEM,
+        url,
+      });
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const message = await runQueue(1);
+
+      expect(message.ack).toHaveBeenCalled();
+      const fetched = fetch.mock.calls.map(([input]) => String(input));
+      // HN と Gemini 以外には fetch しない
+      expect(
+        fetched.filter(
+          (u) =>
+            !u.startsWith("https://hn.algolia.com/") &&
+            !u.startsWith("https://generativelanguage.googleapis.com/"),
+        ),
+      ).toEqual([]);
+      // 投稿の本文だけで要約する
+      expect(await storedArticle()).toEqual({
+        article_url: `https://news.ycombinator.com/item?id=${ITEM_ID}`,
+        article_fetch_method: "post_text",
+      });
+    },
+  );
 
   // skipped にすると poller も再投入しないので、再試行に回す
   it("HN の投稿の取得がタイムアウトしたら skipped にせず再試行する", async () => {
