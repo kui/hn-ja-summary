@@ -95,6 +95,19 @@ async function insertEnqueued(id: number, hoursAgo: number): Promise<void> {
     .run();
 }
 
+describe("フレームへの埋め込み", () => {
+  it.each([
+    ["GET /", () => exports.default.fetch(`${ORIGIN}/`)],
+    ["GET /enqueue", () => exports.default.fetch(`${ORIGIN}/enqueue`)],
+    ["POST /enqueue", () => postEnqueue("123")],
+  ])("%s のレスポンスは埋め込みを禁止する", async (_, request) => {
+    const res = await request();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+  });
+});
+
 describe("GET /enqueue", () => {
   it("id クエリを入力欄の値としてエスケープする", async () => {
     const res = await exports.default.fetch(

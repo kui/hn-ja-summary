@@ -15,6 +15,12 @@ button{margin-top:8px;padding:8px 20px;font:inherit;cursor:pointer}
 .result.error{background:var(--error-bg);border:1px solid var(--error-border)}
 `;
 
+const PAGE_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  // 他のサイトのフレームに埋め込まれると、フォームの送信は同じオリジンからになり Origin の確認で止められない
+  "X-Frame-Options": "DENY",
+};
+
 // 1 回の投入でメッセージが残るのは長くても約 11 時間。hn-processor での再配信が約 3 時間
 // （15 分 × 7 回の配信と、倍々の遅延の合計 63 分）、D1 に書けないときの DLQ での再配信が約 8 時間（5 分 × 100 回）。
 // それより長く enqueued のままなら、メッセージは失われたとみなして投入し直せるようにする。
@@ -64,7 +70,7 @@ function renderIndexPage(): Response {
   </ul>
 </body>
 </html>`,
-    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+    { headers: PAGE_HEADERS },
   );
 }
 
@@ -93,7 +99,7 @@ function renderEnqueuePage(resultHtml: string, defaultValue = ""): Response {
   </form>
 </body>
 </html>`,
-    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+    { headers: PAGE_HEADERS },
   );
 }
 
