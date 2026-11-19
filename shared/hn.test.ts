@@ -291,10 +291,10 @@ describe("fetchCandidateStories", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it("検索が失敗したら空配列を返す", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  // 例外のまま poller を止め、次の実行で取り直す
+  it("検索が失敗したら例外を投げる", async () => {
     mockSearch({}, 503);
-    expect(await fetchCandidateStories()).toEqual([]);
+    await expect(fetchCandidateStories()).rejects.toThrow("503");
   });
 });
 
@@ -433,6 +433,26 @@ describe("fetchHNItemWithComments", () => {
     expect(item!.children).toEqual(tree);
     expect(warn).toHaveBeenCalledTimes(1);
   });
+
+  it("ストーリーが 404 なら null を返す", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("not found", { status: 404 }),
+    );
+    expect(await fetchHNItemWithComments(STORY_ID)).toBeNull();
+  });
+
+  // null を返すと processor は skipped にし、再試行されない
+  it.each([429, 500, 503])(
+    "ストーリーの取得が %i なら再試行に回すため例外を投げる",
+    async (status) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("error", { status }),
+      );
+      await expect(fetchHNItemWithComments(STORY_ID)).rejects.toThrow(
+        String(status),
+      );
+    },
+  );
 
   it("ストーリーの取得にタイムアウトを設定する", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout");

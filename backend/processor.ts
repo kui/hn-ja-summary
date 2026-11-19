@@ -6,17 +6,24 @@ import {
 } from "@hn-feed/shared/hn";
 import { stripHtml } from "@hn-feed/shared/html";
 import type { FeedItem } from "@hn-feed/shared/feed";
-import { setCompleted, setError, setSkipped } from "@hn-feed/shared/state";
-import { SummaryFormatError } from "@hn-feed/shared/summary";
+import { PermanentError } from "@hn-feed/shared/errors";
+import {
+  setCompleted,
+  setError,
+  setLastError,
+  setSkipped,
+} from "@hn-feed/shared/state";
 import type { ArticleInput } from "./article";
 import { fetchArticleContent } from "./article";
-import { GeminiUnavailableError, generateSummary, MODEL } from "./gemini";
+import { generateSummary, MODEL } from "./gemini";
 
 // 要約に含めるコメント最大数
 const MAX_COMMENTS = 100;
 
-// Gemini が一時的に使えないときや、出力の形式が不正だったときの再試行間隔。
-// Flex の容量不足は数分〜十数分続きうるので 1 分から倍々に延ばす。回数の上限は wrangler.toml の max_retries。
+// 再試行はすべて Queue の再配信で行い、回数の上限は wrangler.toml の max_retries。
+// 15 分の上限で強制終了された配信は catch を通らないが、ack も retry もされないので Queue が再配信する。
+// その配信も max_retries に数えられるかは Cloudflare のドキュメントに書かれていない。
+// Flex の容量不足は数分〜十数分続きうるので 1 分から倍々に延ばす。
 const RETRY_BASE_DELAY_SECONDS = 60;
 
 function retryDelaySeconds(attempts: number): number {
@@ -169,6 +176,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   console.log(`Done: ${itemId} — ${title}`);
 }
 
+// D1 に書けないなど、ここで投げた例外は ack も retry もされないので、Queue が retry_delay の間隔で再配信する
 export async function queue(
   batch: MessageBatch<{ itemId: number }>,
   env: Env,
@@ -177,26 +185,19 @@ export async function queue(
     const { itemId } = message.body;
     try {
       await processItem(itemId, env);
-      message.ack();
     } catch (err) {
-      if (
-        err instanceof GeminiUnavailableError ||
-        err instanceof SummaryFormatError
-      ) {
+      if (!(err instanceof PermanentError)) {
         const delaySeconds = retryDelaySeconds(message.attempts);
         console.warn(
           `${String(err)} for ${itemId} (attempt ${message.attempts}), retrying in ${delaySeconds}s`,
         );
+        await setLastError(env.DB, itemId, String(err));
         message.retry({ delaySeconds });
-      } else {
-        console.error(`Processing error for ${itemId}:`, err);
-        try {
-          await setError(env.DB, itemId, String(err));
-        } catch (dbErr) {
-          console.error("Failed to record error state:", dbErr);
-        }
-        message.ack();
+        continue;
       }
+      console.error(`Permanent failure for ${itemId}, giving up:`, err);
+      await setError(env.DB, itemId, String(err));
     }
+    message.ack();
   }
 }

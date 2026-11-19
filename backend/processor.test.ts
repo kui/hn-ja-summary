@@ -43,7 +43,7 @@ function makeMessage(attempts: number) {
   };
 }
 
-async function runQueue(attempts: number) {
+async function runQueue(attempts: number, testEnv: Env = env as Env) {
   const message = makeMessage(attempts);
   const batch = {
     queue: "hn-processor",
@@ -51,8 +51,12 @@ async function runQueue(attempts: number) {
     ackAll: vi.fn(),
     retryAll: vi.fn(),
   } as unknown as MessageBatch<{ itemId: number }>;
-  await queue(batch, env as Env);
-  return message;
+  // 投げた例外は Worker の外に出て、Queue が再配信する
+  const thrown = await queue(batch, testEnv).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  return { ...message, thrown };
 }
 
 async function itemState(): Promise<string | null> {
@@ -73,6 +77,8 @@ describe("queue", () => {
   it.each([
     [429, 1, 60],
     [504, 1, 60],
+    // 400 も許可リストにないので再試行する
+    [400, 1, 60],
     [503, 3, 240],
     // max_retries = 6 なので、再試行を予約する最後の配信は attempts=6
     [503, 6, 1920],
@@ -142,9 +148,12 @@ describe("queue", () => {
     expect(await itemState()).toBeNull();
   });
 
-  it("一時的でないエラーは再試行せず ack する", async () => {
-    mockFetch(geminiStatus(400));
+  it("Gemini がプロンプトを安全性フィルタで止めたら再試行せず error にする", async () => {
+    mockFetch(() =>
+      Response.json({ promptFeedback: { blockReason: "SAFETY" } }),
+    );
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
     const message = await runQueue(1);
     expect(message.retry).not.toHaveBeenCalled();
     expect(message.ack).toHaveBeenCalled();
@@ -152,15 +161,78 @@ describe("queue", () => {
     expect(error).toHaveBeenCalledTimes(1);
   });
 
-  // skipped にすると poller が再投入しないので、error にして次のポーリングで拾わせる
-  it("HN の投稿の取得がタイムアウトしたら skipped ではなく error にする", async () => {
+  it("再試行に回すときはエラーを残し、状態は enqueued のままにする", async () => {
+    await env.DB.prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms)
+       VALUES (?, 'enqueued', 1, 1)`,
+    )
+      .bind(ITEM_ID)
+      .run();
+    mockFetch(geminiStatus(503));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await runQueue(1);
+
+    const row = await env.DB.prepare(
+      "SELECT state, error_message FROM processed_items WHERE id = ?",
+    )
+      .bind(ITEM_ID)
+      .first<{ state: string; error_message: string }>();
+    expect(row?.state).toBe("enqueued");
+    expect(row?.error_message).toContain("503");
+  });
+
+  // 同じ項目のメッセージが 2 つあり、片方が先に成功していた場合
+  it("再試行しない失敗でも、completed の項目は error にしない", async () => {
+    await env.DB.prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms)
+       VALUES (?, 'completed', 1, 1)`,
+    )
+      .bind(ITEM_ID)
+      .run();
+    mockFetch(() =>
+      Response.json({ promptFeedback: { blockReason: "SAFETY" } }),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const message = await runQueue(1);
+
+    expect(message.ack).toHaveBeenCalled();
+    expect(await itemState()).toBe("completed");
+  });
+
+  it("再試行しない失敗で D1 に書けなければ、ack せずに例外を投げる", async () => {
+    mockFetch(() =>
+      Response.json({ promptFeedback: { blockReason: "SAFETY" } }),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const brokenDb = {
+      prepare() {
+        throw new Error("D1 is down");
+      },
+    };
+
+    const message = await runQueue(2, {
+      ...env,
+      DB: brokenDb,
+    } as unknown as Env);
+
+    expect(message.thrown).toBeInstanceOf(Error);
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).not.toHaveBeenCalled();
+  });
+
+  // skipped にすると poller も再投入しないので、再試行に回す
+  it("HN の投稿の取得がタイムアウトしたら skipped にせず再試行する", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(
       new DOMException("timed out", "TimeoutError"),
     );
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const message = await runQueue(1);
-    expect(message.retry).not.toHaveBeenCalled();
-    expect(message.ack).toHaveBeenCalled();
-    expect(await itemState()).toBe("error");
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 60 });
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(await itemState()).toBeNull();
   });
 });

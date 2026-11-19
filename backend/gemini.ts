@@ -1,3 +1,4 @@
+import { PermanentError } from "@hn-feed/shared/errors";
 import {
   parseSummaryDoc,
   renderSummaryHtml,
@@ -82,23 +83,25 @@ function responseSchema(hasArticle: boolean) {
   };
 }
 
-// 容量不足・レート制限・タイムアウトなど、時間を置けば通る見込みのある失敗。
-// Flex は容量不足でも Standard へ自動で切り替わらないため、呼び出し側で遅延付き再試行する。
-export class GeminiUnavailableError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "GeminiUnavailableError";
+// プロンプトの判定は入力だけで決まるので、同じ記事とコメントを送れば毎回同じ理由で止められる。
+// 出力側の finishReason（SAFETY など）は生成した文章への判定で、生成し直すと通ることがあるので再試行に回す。
+// 理由が分からない OTHER も載せない
+const REJECTED_BLOCK_REASONS = new Set([
+  "SAFETY",
+  "BLOCKLIST",
+  "PROHIBITED_CONTENT",
+]);
+
+export class GeminiRejectedError extends PermanentError {
+  constructor(message: string) {
+    super(message);
+    this.name = "GeminiRejectedError";
   }
 }
 
-// 公式の Troubleshooting で再試行の対象とされているもの（429・408・5xx）。
-// Flex の容量不足は 503、X-Server-Timeout 超過は 504 で返る。
-function isTransientStatus(status: number): boolean {
-  return status === 429 || status === 408 || status >= 500;
-}
-
 interface GeminiResponse {
-  candidates: Array<{
+  promptFeedback?: { blockReason?: string };
+  candidates?: Array<{
     content: { parts: Array<{ text: string }> };
     finishReason: string;
   }>;
@@ -193,8 +196,13 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
   console.log(
     `  [gemini] usage: item=${itemId} finishReason=${candidate?.finishReason ?? "(none)"} input=${inputTokens} output=${outputTokens} thoughts=${thoughtsTokens}`,
   );
+  const blockReason = data.promptFeedback?.blockReason;
+  if (blockReason !== undefined && REJECTED_BLOCK_REASONS.has(blockReason)) {
+    throw new GeminiRejectedError(
+      `Gemini blocked the prompt: blockReason=${blockReason}`,
+    );
+  }
   if (candidate?.finishReason === "MAX_TOKENS") {
-    // 途切れた出力は作り直せば上限内に収まる見込みがあるので再試行に回す
     throw new SummaryFormatError(
       "Gemini output truncated: finishReason=MAX_TOKENS",
     );
@@ -265,18 +273,10 @@ async function requestSummary(
     });
     body = await resp.text();
   } catch (err) {
-    // タイムアウトや接続切れ。Flex は接続を数分〜十数分保つので起きやすく、時間を置けば通る見込みがある
-    throw new GeminiUnavailableError(`Gemini request failed: ${String(err)}`, {
-      cause: err,
-    });
+    throw new Error(`Gemini request failed: ${String(err)}`, { cause: err });
   }
 
   if (!resp.ok) {
-    if (isTransientStatus(resp.status)) {
-      throw new GeminiUnavailableError(
-        `Gemini unavailable: ${resp.status} ${body}`,
-      );
-    }
     throw new Error(`Gemini API error: ${resp.status} ${body}`);
   }
 

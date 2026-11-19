@@ -1,4 +1,14 @@
-import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  inject,
+  it,
+  vi,
+} from "vitest";
+import { Temporal } from "temporal-polyfill";
 import { applyD1Migrations, env, type D1Migration } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
 
@@ -70,6 +80,21 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM processed_items").run();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+async function insertEnqueued(id: number, hoursAgo: number): Promise<void> {
+  const enqueuedAt =
+    Temporal.Now.instant().epochMilliseconds - hoursAgo * 60 * 60 * 1000;
+  await env.DB.prepare(
+    `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, enqueued_at_ms)
+     VALUES (?, 'enqueued', 1, 1, ?)`,
+  )
+    .bind(id, enqueuedAt)
+    .run();
+}
+
 describe("GET /enqueue", () => {
   it("id クエリを入力欄の値としてエスケープする", async () => {
     const res = await exports.default.fetch(
@@ -104,6 +129,50 @@ describe("POST /enqueue", () => {
 
     expect(await res.text()).toContain("再処理をキューに追加しました");
     expect(await storedState(123)).toBe("enqueued");
+  });
+
+  it("投入から 12 時間以内のキュー待ちは受け付けない", async () => {
+    await insertEnqueued(123, 1);
+
+    const res = await postEnqueue("123");
+
+    expect(await res.text()).toContain("既にキュー待ち");
+  });
+
+  // メッセージが失われ、poller も拾わない状態で残った項目を戻す手段
+  it("投入から 12 時間を過ぎたキュー待ちは投入し直す", async () => {
+    await insertEnqueued(123, 13);
+    const send = vi.spyOn(env.QUEUE, "send");
+
+    const res = await postEnqueue("123");
+
+    expect(await res.text()).toContain("キューに追加しました");
+    expect(send).toHaveBeenCalledWith({ itemId: 123 });
+  });
+
+  // 状態を変える前に止まるので、もう一度送れば投入できる
+  it("送信に失敗したら状態を変えずに失敗する", async () => {
+    vi.spyOn(env.QUEUE, "send").mockRejectedValue(new Error("queue is down"));
+
+    await expect(postEnqueue("123")).rejects.toThrow("queue is down");
+    expect(await storedState(123)).toBeNull();
+  });
+
+  // 前回の投入のエラーが残ると、DLQ で諦めたときの原因を取り違える
+  it("投入し直すと前回のエラーを消す", async () => {
+    await env.DB.prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, error_message)
+       VALUES (123, 'error', 1, 1, 'Gemini API error: 503')`,
+    ).run();
+
+    await postEnqueue("123");
+
+    const row = await env.DB.prepare(
+      "SELECT state, error_message FROM processed_items WHERE id = ?",
+    )
+      .bind(123)
+      .first();
+    expect(row).toEqual({ state: "enqueued", error_message: null });
   });
 
   it("同じオリジンからの POST はキューに追加する", async () => {

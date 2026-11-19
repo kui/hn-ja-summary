@@ -24,9 +24,12 @@ CF Queues (hn-processor, 1 回の実行で 1 件)
         ├─ raw fetch → Firecrawl → Wayback: 元記事取得
         ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
         ├─ 検証して HTML を組み立て
-        │    └─ 一時的なエラー (429/408/5xx)・タイムアウト・接続切れ・形式不正・出力上限での途切れは
-        │       その場で作り直さず、キューで遅延を倍々に延ばして再試行
+        │    └─ 失敗はその場で作り直さず、キューで遅延を倍々に延ばして再試行 (最大 6 回)
+        │       Gemini がプロンプトを安全性フィルタで止めたときなど、再試行しても通らない失敗だけはすぐ error にする
         └─ D1: feed_items / processed_items 更新
+
+CF Queues (hn-processor-dlq, 再試行を使い切ったメッセージ)
+  └─→ backend-worker (queue): その項目を error にする
 
 feed-worker (fetch handler)
   ├─ GET /feed.xml    → RSS (Inoreader で購読)
@@ -108,6 +111,7 @@ npm run db:migrate
 ```bash
 cd backend
 npx wrangler queues create hn-processor
+npx wrangler queues create hn-processor-dlq
 ```
 
 ### 5. シークレット投入（backend-worker）
@@ -176,3 +180,16 @@ npm -w admin run dev
 - 投稿から 2 時間以上たっている
 - コメントが 40 件以上ある
 - 投稿からの平均で毎時 20 ポイント以上獲得している
+
+## 処理を諦めた項目
+
+`error` の項目は poller が再投入しない。再試行しても通らない失敗（Gemini がプロンプトを安全性フィルタで止めたときなど）か、
+キューの再試行を使い切ったもの。`error_message` には、最後に再試行に回したときのエラーが残る。
+次のコマンドで一覧を出し、原因を直したあとに管理 UI の「エンキュー」から投入し直す。
+
+```bash
+npm -w feed exec -- wrangler d1 execute hn-feed --remote --command "SELECT id, error_message FROM processed_items WHERE state = 'error' ORDER BY updated_at_ms DESC"
+```
+
+投入から 12 時間を過ぎても `enqueued` のままの項目は、メッセージが失われている。
+管理 UI の「エンキュー」から投入し直せる。
