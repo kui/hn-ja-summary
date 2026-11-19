@@ -77,6 +77,13 @@ async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
     .run();
 }
 
+// HN は投稿 URL のスキームを保証しないので、リンクにも取得先にもできる http(s) だけを記事 URL とする
+function parseArticleUrl(url: string | null): string | null {
+  if (!url) return null;
+  const protocol = URL.parse(url)?.protocol;
+  return protocol === "http:" || protocol === "https:" ? url : null;
+}
+
 async function processItem(itemId: number, env: Env): Promise<void> {
   console.log(`Processing item ${itemId}`);
 
@@ -88,7 +95,8 @@ async function processItem(itemId: number, env: Env): Promise<void> {
 
   const title = algoliaItem.title ?? `HN Item ${itemId}`;
   const hnUrl = `https://news.ycombinator.com/item?id=${itemId}`;
-  const articleUrl = algoliaItem.url ?? hnUrl;
+  const fetchUrl = parseArticleUrl(algoliaItem.url);
+  const articleUrl = fetchUrl ?? hnUrl;
   const hnPostedAt = Temporal.Instant.from(
     algoliaItem.created_at,
   ).epochMilliseconds;
@@ -99,10 +107,10 @@ async function processItem(itemId: number, env: Env): Promise<void> {
 
   let article: ArticleInput;
   let articleFetchMethod: string;
-  if (algoliaItem.url) {
-    console.log(`Fetching article: ${algoliaItem.url}`);
+  if (fetchUrl) {
+    console.log(`Fetching article: ${fetchUrl}`);
     const urlArticle = await fetchArticleContent(
-      algoliaItem.url,
+      fetchUrl,
       env.FIRECRAWL_API_KEY,
       hnPostedAt,
     );
