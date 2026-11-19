@@ -29,38 +29,19 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-  deploy-feed:
+  deploy:
     needs: migrate
+    strategy:
+      # 1 つの Worker のデプロイ失敗で、ほかの Worker のデプロイを止めない
+      fail-fast: false
+      matrix:
+        workspace: [feed, backend, admin]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
       - run: npm ci
-      - run: npm -w feed run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
-  deploy-backend:
-    needs: migrate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5
-      - run: npm ci
-      - run: npm -w backend run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
-  deploy-admin:
-    needs: migrate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5
-      - run: npm ci
-      - run: npm -w admin run deploy
+      - run: npm -w ${{ matrix.workspace }} run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

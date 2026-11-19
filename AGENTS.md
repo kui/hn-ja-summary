@@ -12,7 +12,7 @@
 Node.js + npm workspaces で管理されている。ルートで `npm install` を実行すると
 `feed/`, `backend/`, `shared/` のパッケージが一括インストールされる。
 
-個別ワークスペースのみ確認したい場合は `tsc -p feed/tsconfig.json --noEmit` などをルートから実行する。
+個別ワークスペースのみ確認したい場合は `npm run ts:check -w feed` などをルートから実行する。テストファイルと `vitest.config.ts` も、各ワークスペースの `tsconfig.test.json` でチェックされる。
 
 ## 依存ソフトウェアのバージョン選定
 
