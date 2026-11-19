@@ -87,10 +87,15 @@ async function itemState(): Promise<string | null> {
     .first<string>("state");
 }
 
-async function storedArticleUrl(): Promise<string | null> {
-  return env.DB.prepare("SELECT article_url FROM feed_items WHERE id = ?")
+async function storedArticle(): Promise<{
+  article_url: string;
+  article_fetch_method: string;
+} | null> {
+  return env.DB.prepare(
+    "SELECT article_url, article_fetch_method FROM feed_items WHERE id = ?",
+  )
     .bind(ITEM_ID)
-    .first<string>("article_url");
+    .first();
 }
 
 beforeEach(async () => {
@@ -239,28 +244,34 @@ describe("queue", () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 
-  it("http(s) の記事 URL は保存し、本文を取得する", async () => {
-    const articleUrl = "https://example.com/article";
-    const fetch = mockFetch(
-      (url) =>
-        url === articleUrl
-          ? new Response("<html><body><p>article</p></body></html>", {
-              headers: { "Content-Type": "text/html" },
-            })
-          : geminiSummary(),
-      { ...ALGOLIA_ITEM, url: articleUrl },
-    );
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+  // https:example.com はブラウザが href で相対パスとして解決するので、正規化して保存する
+  it.each([
+    ["https://example.com/article", "https://example.com/article"],
+    ["https:example.com/article", "https://example.com/article"],
+  ])(
+    "記事 URL が %s なら %s を保存し、本文を取得する",
+    async (url, articleUrl) => {
+      const fetch = mockFetch(
+        (url) =>
+          url === articleUrl
+            ? new Response("<html><body><p>article</p></body></html>", {
+                headers: { "Content-Type": "text/html" },
+              })
+            : geminiSummary(),
+        { ...ALGOLIA_ITEM, url },
+      );
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const message = await runQueue(1);
+      const message = await runQueue(1);
 
-    expect(message.ack).toHaveBeenCalled();
-    expect(fetch.mock.calls.map(([input]) => String(input))).toContain(
-      articleUrl,
-    );
-    expect(await storedArticleUrl()).toBe(articleUrl);
-  });
+      expect(message.ack).toHaveBeenCalled();
+      expect(fetch.mock.calls.map(([input]) => String(input))).toContain(
+        articleUrl,
+      );
+      expect((await storedArticle())?.article_url).toBe(articleUrl);
+    },
+  );
 
   // リンクとして配信するので、javascript: などを href に入れない
   it.each(["javascript:alert(1)", "data:text/html,<p>x</p>", "not a url"])(
@@ -284,9 +295,11 @@ describe("queue", () => {
             !u.startsWith("https://generativelanguage.googleapis.com/"),
         ),
       ).toEqual([]);
-      expect(await storedArticleUrl()).toBe(
-        `https://news.ycombinator.com/item?id=${ITEM_ID}`,
-      );
+      // 投稿の本文だけで要約する
+      expect(await storedArticle()).toEqual({
+        article_url: `https://news.ycombinator.com/item?id=${ITEM_ID}`,
+        article_fetch_method: "post_text",
+      });
     },
   );
 

@@ -77,11 +77,14 @@ async function upsertFeedItem(db: D1Database, item: FeedItem): Promise<void> {
     .run();
 }
 
-// HN は投稿 URL のスキームを保証しないので、リンクにも取得先にもできる http(s) だけを記事 URL とする
+// HN は投稿 URL のスキームを保証しないので、リンクにも取得先にもできる http(s) だけを記事 URL とする。
+// 元の文字列を返すと、https:example.com のような URL をブラウザが href で相対パスとして解決する
 function parseArticleUrl(url: string | null): string | null {
   if (!url) return null;
-  const protocol = URL.parse(url)?.protocol;
-  return protocol === "http:" || protocol === "https:" ? url : null;
+  const parsed = URL.parse(url);
+  return parsed?.protocol === "http:" || parsed?.protocol === "https:"
+    ? parsed.href
+    : null;
 }
 
 async function processItem(itemId: number, env: Env): Promise<void> {
