@@ -6,6 +6,7 @@
     { "path": "feed/tsconfig.json" },
     { "path": "feed/tsconfig.test.json" },
     { "path": "backend/tsconfig.json" },
+    { "path": "backend/tsconfig.test.json" },
     { "path": "admin/tsconfig.json" },
     { "path": "admin/tsconfig.test.json" },
     { "path": "scripts/tsconfig.json" }
