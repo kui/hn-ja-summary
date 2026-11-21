@@ -421,4 +421,13 @@ describe("parseSummaryResponse", () => {
       parse({ ...VALID_DOC, topics: [{ heading: "", bodyHtml: "<p>x</p>" }] }),
     ).rejects.toThrow(SummaryFormatError);
   });
+
+  it.each([
+    ["空文字", ""],
+    ["空白だけ", "  \n\t "],
+  ])("観点の本文（bodyHtml）が%sなら拒否する", async (_label, bodyHtml) => {
+    await expect(
+      parse({ ...VALID_DOC, topics: [{ heading: "観点1", bodyHtml }] }),
+    ).rejects.toThrow(SummaryFormatError);
+  });
 });
