@@ -136,15 +136,22 @@ async function readableTextFromHtml(html: string): Promise<string> {
   return page;
 }
 
-// 改行は段落の区切りや表の行を表すので残し、空白とタブの連続だけをまとめる。
+// 改行は段落の区切りや表の行を表すので残す。行頭の字下げも diff やソースコードの
+// 意味を持つので残し、行の途中の空白とタブの連続だけをまとめる。
 // 空行は 1 行までにして、本文の上限を空行で使い切らないようにする
 function normalizePlainText(text: string): string {
   return text
-    .replace(/\r\n?/g, "\n")
-    .replace(/[^\S\n]+/g, " ")
-    .replace(/ ?\n ?/g, "\n")
+    .replace(/\r\n?|[\u2028\u2029]/g, "\n")
+    .split("\n")
+    .map((line) => {
+      const indent = /^[ \t]*/.exec(line)?.[0] ?? "";
+      const rest = line.slice(indent.length).replace(/\s+/g, " ").trim();
+      return rest === "" ? "" : indent + rest;
+    })
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/^\n+/, "")
+    .trimEnd();
 }
 
 async function extractReadableText(resp: Response): Promise<string | null> {

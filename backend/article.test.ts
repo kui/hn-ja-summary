@@ -420,7 +420,7 @@ describe("fetchArticleContent", () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
         return htmlResponse(
-          `first   line \r\n\r\n\r\n\r\n\tcol1\t\tcol2  \nlast\n${BODY}`,
+          `first   line \r\n\r\n\r\n\r\ncol1\t\tcol2  \nlast\u2028line2\u2029line3\n${BODY}`,
           200,
           "text/plain",
         );
@@ -431,7 +431,26 @@ describe("fetchArticleContent", () => {
     const result = await fetchArticle();
 
     expect(result.status === "ok" && result.content).toBe(
-      `first line\n\ncol1 col2\nlast\n${BODY}`,
+      `first line\n\ncol1 col2\nlast\nline2\nline3\n${BODY}`,
+    );
+  });
+
+  it("raw は text/plain の行頭の字下げを残す", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `@@ -1,2 +1,2 @@\n foo  bar \n+\tbaz\n    \n  qux\n${BODY}`,
+          200,
+          "text/plain",
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `@@ -1,2 +1,2 @@\n foo bar\n+ baz\n\n  qux\n${BODY}`,
     );
   });
 
