@@ -33,9 +33,7 @@ export function countComments(item: AlgoliaItem): number | null {
   while (stack.length > 0) {
     const comment = stack.pop()!;
     count++;
-    if (comment.children) {
-      stack.push(...comment.children);
-    }
+    stack.push(...comment.children);
   }
   return count;
 }
@@ -154,7 +152,20 @@ async function fetchHNItem(itemId: number): Promise<AlgoliaItem | null> {
   if (!resp.ok) {
     throw new Error(`Algolia items API error: ${resp.status}`);
   }
-  return resp.json<AlgoliaItem>();
+  const item = await resp.json<AlgoliaItem>();
+  for (const comment of item.children ?? []) normalizeChildren(comment);
+  return item;
+}
+
+// 以降の処理は children が配列であることを前提にツリーをたどる。
+// 形の崩れた応答 1 件で項目全体を失敗させないよう、入口で空の配列にそろえる
+function normalizeChildren(root: AlgoliaComment): void {
+  const stack = [root];
+  while (stack.length > 0) {
+    const comment = stack.pop()!;
+    if (!Array.isArray(comment.children)) comment.children = [];
+    stack.push(...comment.children);
+  }
 }
 
 // 検索はコメントを補うだけなので、応答が止まっても要約の処理を長く待たせない

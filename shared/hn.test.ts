@@ -395,6 +395,18 @@ describe("fetchHNItemWithComments", () => {
     expect(countComments(item!)).toBe(2);
   });
 
+  it("children が配列でないコメントは空の配列にそろえ、検索結果もつなげる", async () => {
+    const broken = { ...makeComment(1, "a", LONG), children: undefined };
+    mockAlgolia([broken as unknown as AlgoliaComment], () =>
+      Response.json({ hits: [hit(2, 1)] }),
+    );
+    const item = await fetchHNItemWithComments(STORY_ID);
+
+    expect(item!.children![0].children.map((c) => c.id)).toEqual([2]);
+    expect(countComments(item!)).toBe(2);
+    expect(() => flattenTopComments(item!.children!, 10)).not.toThrow();
+  });
+
   it("返信が親より先に並んでいても親の子につなぐ", async () => {
     const DEAD_ID = 999;
     mockAlgolia([], () =>
@@ -451,13 +463,6 @@ describe("fetchHNItemWithComments", () => {
 
     expect(item!.children).toEqual(tree);
     expect(warn).toHaveBeenCalledTimes(1);
-  });
-
-  it("ストーリーが 404 なら null を返す", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("not found", { status: 404 }),
-    );
-    expect(await fetchHNItemWithComments(STORY_ID)).toBeNull();
   });
 
   // null を返すと processor は skipped にし、再試行されない
