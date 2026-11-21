@@ -1,5 +1,10 @@
 import { fetchCandidateStories } from "@hn-feed/shared/hn";
-import { meetsVelocity } from "@hn-feed/shared/filter";
+import {
+  MIN_AGE_HOURS,
+  MIN_COMMENTS,
+  SEARCH_WINDOW_HOURS,
+  meetsVelocity,
+} from "@hn-feed/shared/filter";
 import { Temporal } from "temporal-polyfill";
 import { batchGetStates, setEnqueued } from "@hn-feed/shared/state";
 
@@ -9,7 +14,12 @@ export async function scheduled(
   _ctx: ExecutionContext,
 ): Promise<void> {
   console.log("Fetching HN candidate stories...");
-  const items = await fetchCandidateStories();
+  // 打ち切りや API エラーは例外のまま実行を失敗させる。次の cron の実行で取り直す
+  const items = await fetchCandidateStories({
+    searchWindowHours: SEARCH_WINDOW_HOURS,
+    minAgeHours: MIN_AGE_HOURS,
+    minComments: MIN_COMMENTS,
+  });
   console.log(`Got ${items.length} candidate stories`);
 
   const candidates = items.filter(meetsVelocity);

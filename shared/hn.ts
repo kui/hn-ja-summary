@@ -1,5 +1,4 @@
 import { Temporal } from "temporal-polyfill";
-import { MIN_AGE_HOURS, MIN_COMMENTS, SEARCH_WINDOW_HOURS } from "./filter.ts";
 import { decodeHtmlEntities } from "./html.ts";
 
 // Document https://hn.algolia.com/api
@@ -80,20 +79,34 @@ function algoliaHitToHNItem(hit: AlgoliaSearchHit): HNItem {
   };
 }
 
-export async function fetchCandidateStories(): Promise<HNItem[]> {
+export interface CandidateCriteria {
+  searchWindowHours: number;
+  minAgeHours: number;
+  minComments: number;
+}
+
+// poller は 30 分ごとに実行されるので、打ち切ってもすぐ次の実行で取り直せる。検索の応答は数秒で返る
+const CANDIDATE_FETCH_TIMEOUT_MS = 30_000;
+
+export async function fetchCandidateStories({
+  searchWindowHours,
+  minAgeHours,
+  minComments,
+}: CandidateCriteria): Promise<HNItem[]> {
   const now = Math.floor(Temporal.Now.instant().epochMilliseconds / 1000);
   // 対象期間の全ストーリーは 1 回で取得できる件数を超えるので、Algolia 側で絞る。
   // points や num_comments で絞るクエリは、ドキュメントにあっても HTTP 400 を返すことがある。
   // そうなったら created_at_i だけで絞り、1000 件を超えないよう期間を分けて取得して、コメント数はクライアント側で判定する。
   const numericFilters = encodeURIComponent(
     [
-      `created_at_i>=${now - SEARCH_WINDOW_HOURS * 3600}`,
-      `created_at_i<=${now - MIN_AGE_HOURS * 3600}`,
-      `num_comments>=${MIN_COMMENTS}`,
+      `created_at_i>=${now - searchWindowHours * 3600}`,
+      `created_at_i<=${now - minAgeHours * 3600}`,
+      `num_comments>=${minComments}`,
     ].join(","),
   );
   const resp = await fetch(
     `${ALGOLIA_API}/search?tags=story&numericFilters=${numericFilters}&hitsPerPage=${MAX_HITS_PER_PAGE}`,
+    { signal: AbortSignal.timeout(CANDIDATE_FETCH_TIMEOUT_MS) },
   );
   if (!resp.ok) {
     throw new Error(`Algolia search API error: ${resp.status}`);
@@ -111,12 +124,28 @@ export async function fetchCandidateStories(): Promise<HNItem[]> {
 }
 
 // consumer は 1 回の実行が 15 分を超えると強制終了され、catch を通らずエラーも残らない。
-// コメント検索の 10 秒、記事取得の最大 75 秒、Gemini の 12 分に足しても 15 分に収まる長さにする
+// 記事取得の最大 75 秒、Gemini の 12 分に足しても 15 分に収まる長さにする。コメント検索（10 秒）はこの取得と同時に進むので足さない
 const ITEM_FETCH_TIMEOUT_MS = 30_000;
 
 export async function fetchHNItemWithComments(
   itemId: number,
 ): Promise<AlgoliaItem | null> {
+  // 検索は itemId だけで決まるので、ツリーの取得を待たずに始める
+  const [item, commentHits] = await Promise.all([
+    fetchHNItem(itemId),
+    fetchCommentHits(itemId).catch((e: unknown) => {
+      console.warn(`Failed to add comments from search for ${itemId}:`, e);
+      return [];
+    }),
+  ]);
+  if (item === null) return null;
+
+  // items/:id は dead なコメントとその下の返信をツリーから除くので、検索 API で補う
+  addMissingComments(item, commentHits);
+  return item;
+}
+
+async function fetchHNItem(itemId: number): Promise<AlgoliaItem | null> {
   const resp = await fetch(`${ALGOLIA_API}/items/${itemId}`, {
     signal: AbortSignal.timeout(ITEM_FETCH_TIMEOUT_MS),
   });
@@ -125,15 +154,7 @@ export async function fetchHNItemWithComments(
   if (!resp.ok) {
     throw new Error(`Algolia items API error: ${resp.status}`);
   }
-  const item = await resp.json<AlgoliaItem>();
-
-  // items/:id は dead なコメントとその下の返信をツリーから除くので、検索 API で補う
-  try {
-    addMissingComments(item, await fetchCommentHits(itemId));
-  } catch (e) {
-    console.warn(`Failed to add comments from search for ${itemId}:`, e);
-  }
-  return item;
+  return resp.json<AlgoliaItem>();
 }
 
 // 検索はコメントを補うだけなので、応答が止まっても要約の処理を長く待たせない
@@ -154,6 +175,8 @@ async function fetchCommentHits(itemId: number): Promise<AlgoliaCommentHit[]> {
   );
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const res = await resp.json<AlgoliaSearchResponse<AlgoliaCommentHit>>();
+  // 形の崩れた応答はここで失敗させ、呼び出し側で検索なしの扱いにする
+  if (!Array.isArray(res.hits)) throw new Error("Unexpected response: no hits");
 
   if (res.nbHits > res.hits.length) {
     console.warn(
