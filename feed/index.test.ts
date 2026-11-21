@@ -238,7 +238,7 @@ describe("記事ページ", () => {
 describe("一覧ページ", () => {
   it.each([
     ["カーソルなし", "/"],
-    ["カーソルあり", "/?cursor=1700000000000"],
+    ["カーソルあり", "/?cursor=1700000000000-1"],
   ])("%s でも記事を返す", async (_, path) => {
     await insertItem({
       id: 1,
@@ -330,28 +330,85 @@ describe("一覧ページ", () => {
 
     const html = await get("/");
 
-    // 新しい順に 20 件で、21 件目（最古）の作成日時がカーソルになる
+    // 新しい順に 20 件で、21 件目（最古）の作成日時と id がカーソルになる
     expect(html.match(/<article>/g)).toHaveLength(20);
     expect(html).not.toContain("title-1<");
-    expect(html).toContain('<a href="/?cursor=1000">古い記事 →</a>');
+    expect(html).toContain('<a href="/?cursor=1000-1">古い記事 →</a>');
     expect(html).toContain('<span class="disabled">← 新しい記事</span>');
   });
 
   it("カーソルの先に新しい記事があれば、前のページへのリンクを出す", async () => {
     for (let i = 1; i <= 3; i++) await insertAt(i, i * 1000);
 
-    const html = await get("/?cursor=1000");
+    const html = await get("/?cursor=1000-1");
 
     expect(html.match(/<article>/g)).toHaveLength(1);
-    expect(html).toContain('<a href="/?cursor=3000">← 新しい記事</a>');
+    expect(html).toContain('<a href="/?cursor=3000-3">← 新しい記事</a>');
     expect(html).toContain('<span class="disabled">古い記事 →</span>');
   });
 
-  it("数値でないカーソルは無視して先頭から出す", async () => {
+  it("20 件目と 21 件目の作成日時が同じでも、次のページに 20 件目を重ねて出さない", async () => {
     await insertAt(1, 1000);
+    for (let i = 2; i <= 21; i++) await insertAt(i, i === 2 ? 1000 : i * 1000);
 
-    expect(await get("/?cursor=abc")).toContain("title-1");
+    const first = await get("/");
+    expect(first).toContain('<a href="/?cursor=1000-1">古い記事 →</a>');
+
+    const second = await get("/?cursor=1000-1");
+    expect(second.match(/<article>/g)).toHaveLength(1);
+    expect(second).toContain("title-1<");
+    expect(second).not.toContain("title-2<");
   });
+
+  it("作成日時が同じ記事が 21 件以上あっても、次のページへ進み、前のページへ戻れる", async () => {
+    for (let i = 1; i <= 22; i++) await insertAt(i, 1000);
+
+    const first = await get("/");
+    expect(first).toContain('<a href="/?cursor=1000-2">古い記事 →</a>');
+
+    const second = await get("/?cursor=1000-2");
+    expect(second.match(/<article>/g)).toHaveLength(2);
+    expect(second).toContain("title-2<");
+    expect(second).toContain("title-1<");
+    expect(second).toContain('<a href="/?cursor=1000-22">← 新しい記事</a>');
+  });
+
+  it("id のない以前の形のカーソルは、その作成日時の記事をすべて含めて出す", async () => {
+    for (let i = 1; i <= 3; i++) await insertAt(i, 1000);
+    await insertAt(4, 2000);
+
+    const html = await get("/?cursor=1000");
+
+    expect(html.match(/<article>/g)).toHaveLength(3);
+    expect(html).not.toContain("title-4<");
+    expect(html).toContain('<a href="/?cursor=2000-4">← 新しい記事</a>');
+  });
+
+  it.each(["abc", "123abc", "1000-", "1000-abc"])(
+    "数値でないカーソル %s は無視して先頭から出す",
+    async (cursor) => {
+      await insertAt(1, 1000);
+
+      expect(await get(`/?cursor=${cursor}`)).toContain("title-1");
+    },
+  );
+
+  it.each([
+    ["作成日時", `${"9".repeat(309)}-1`],
+    ["id", `1000-${"9".repeat(309)}`],
+  ])(
+    "%s が安全な整数の範囲を超えるカーソルは無視して先頭から出す",
+    async (_, cursor) => {
+      await insertAt(1, 1000);
+      await insertAt(2, 2000);
+
+      const html = await get(`/?cursor=${cursor}`);
+
+      expect(html).toContain("title-1<");
+      expect(html).toContain("title-2<");
+      expect(html).not.toContain("<nav");
+    },
+  );
 });
 
 describe("RSS", () => {
