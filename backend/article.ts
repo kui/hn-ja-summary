@@ -148,7 +148,12 @@ async function extractReadableText(resp: Response): Promise<string | null> {
   }
   const text = await readBodyText(resp, isHtml);
   if (text === null) return null;
-  const content = isHtml ? await readableTextFromHtml(text) : stripHtml(text);
+  // text/plain で HTML を返すサーバーがあるので、中身が HTML なら HTML として読む
+  const looksLikeHtml = /^\s*<(!doctype html|html)/i.test(text);
+  const content =
+    isHtml || looksLikeHtml
+      ? await readableTextFromHtml(text)
+      : text.replace(/\s+/g, " ").trim();
   return clampContent(content);
 }
 
