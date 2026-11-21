@@ -397,6 +397,25 @@ describe("fetchArticleContent", () => {
     expect(result.status === "ok" && result.content).toBe(BODY);
   });
 
+  it("raw は text/plain の < と > を含む本文を消さずに読む", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `a < b and c > d\n\nFrom: <foo@example.com>\n${BODY}`,
+          200,
+          "text/plain",
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `a < b and c > d From: <foo@example.com> ${BODY}`,
+    );
+  });
+
   it.each([
     { name: "Shift_JIS", charset: "Shift_JIS", encoded: SJIS_BUNSHOU },
     { name: "EUC-JP", charset: "EUC-JP", encoded: EUCJP_BUNSHOU },

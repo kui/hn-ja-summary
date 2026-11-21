@@ -148,7 +148,10 @@ async function extractReadableText(resp: Response): Promise<string | null> {
   }
   const text = await readBodyText(resp, isHtml);
   if (text === null) return null;
-  const content = isHtml ? await readableTextFromHtml(text) : stripHtml(text);
+  // text/plain はタグを含まない。stripHtml を通すと `a < b and c > d` の間が消える
+  const content = isHtml
+    ? await readableTextFromHtml(text)
+    : text.replace(/\s+/g, " ").trim();
   return clampContent(content);
 }
 
