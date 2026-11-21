@@ -84,13 +84,7 @@ async function readableParts(
         },
       },
     )
-    // HTMLRewriter は <meta charset> を見ず、出力もページの文字コードのままにするので、
-    // 文字列に戻した HTML を UTF-8 として渡す
-    .transform(
-      new Response(html, {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      }),
-    )
+    .transform(new Response(html))
     .text();
   const page = htmlToText(cleanedHtml);
   const segments = cleanedHtml.split(startMark);

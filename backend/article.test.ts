@@ -391,6 +391,25 @@ describe("fetchArticleContent", () => {
     },
   );
 
+  it("raw は <meta charset> だけで宣言した Shift_JIS の本文を正しくデコードする", async () => {
+    // デコード後の HTML にも <meta charset="Shift_JIS"> が残るので、HTMLRewriter がそれで読み直さないことを確かめる
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return encodedHtmlResponse(
+          SJIS_BUNSHOU,
+          "text/html",
+          '<meta charset="Shift_JIS">',
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.method).toBe("raw");
+    expect(result.status === "ok" && result.content).toBe(BODY);
+  });
+
   it("raw の本文が文字化けしていたら使わず、firecrawl を呼ぶ", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
