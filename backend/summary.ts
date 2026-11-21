@@ -1,12 +1,10 @@
 import { decodeHtmlEntities, escapeHtml } from "@hn-feed/shared/html";
-import type { ArticleInput } from "./article";
+import type { MissingArticleStatus } from "./article";
 
 export interface SummaryTopic {
   heading: string;
   bodyHtml: string;
 }
-
-export type MissingArticleStatus = Exclude<ArticleInput["status"], "ok">;
 
 // 本文が無いときは要約を持たず、描画時に理由ごとの固定の注記を出す
 export type ArticleSummary =
