@@ -358,6 +358,32 @@ describe("fetchArticleContent", () => {
     );
   });
 
+  it("raw の HTML の本文では、絶対 URL のリンク先をテキストのあとに残す", async () => {
+    const links = [
+      '<a href="https://x.test/a?b=1&amp;c=2">記事</a>',
+      '<a href="https://ja.wikipedia.org/wiki/東京"><b>東京</b></a>',
+      '<a href="https://x.test/?q=&lt;b&gt;">検索</a>',
+      '<a href="https://x.test/same">https://x.test/same</a>',
+      '<a href="/about">相対</a>',
+      '<a href="#fn1">脚注</a>',
+      '<a href="mailto:a@x.test">メール</a>',
+    ].join(" ");
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><nav><a href="https://x.test/nav">メニュー</a></nav><main>${BODY}<p>${links}</p></main></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `${BODY} 記事 (https://x.test/a?b=1&c=2) 東京 (https://ja.wikipedia.org/wiki/東京) 検索 (https://x.test/?q=<b>) https://x.test/same 相対 脚注 メール`,
+    );
+  });
+
   it("raw は text/plain をそのまま本文として読む", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
