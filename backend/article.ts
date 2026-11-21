@@ -136,6 +136,17 @@ async function readableTextFromHtml(html: string): Promise<string> {
   return page;
 }
 
+// 改行は段落の区切りや表の行を表すので残し、空白とタブの連続だけをまとめる。
+// 空行は 1 行までにして、本文の上限を空行で使い切らないようにする
+function normalizePlainText(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 async function extractReadableText(resp: Response): Promise<string | null> {
   const contentType = resp.headers.get("content-type") ?? "";
   const isHtml =
@@ -153,7 +164,7 @@ async function extractReadableText(resp: Response): Promise<string | null> {
   const content =
     isHtml || looksLikeHtml
       ? await readableTextFromHtml(text)
-      : text.replace(/\s+/g, " ").trim();
+      : normalizePlainText(text);
   return clampContent(content);
 }
 

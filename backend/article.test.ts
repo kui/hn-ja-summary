@@ -412,7 +412,26 @@ describe("fetchArticleContent", () => {
     const result = await fetchArticle();
 
     expect(result.status === "ok" && result.content).toBe(
-      `a < b and c > d From: <foo@example.com> ${BODY}`,
+      `a < b and c > d\n\nFrom: <foo@example.com>\n${BODY}`,
+    );
+  });
+
+  it("raw は text/plain の改行を残し、空白と空行だけをまとめる", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `first   line \r\n\r\n\r\n\r\n\tcol1\t\tcol2  \nlast\n${BODY}`,
+          200,
+          "text/plain",
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `first line\n\ncol1 col2\nlast\n${BODY}`,
     );
   });
 
