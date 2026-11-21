@@ -11,6 +11,7 @@ import {
 import { Temporal } from "temporal-polyfill";
 import { applyD1Migrations, env, type D1Migration } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
+import admin from "./index.ts";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -166,8 +167,17 @@ describe("POST /enqueue", () => {
   // 状態を変える前に止まるので、もう一度送れば投入できる
   it("送信に失敗したら状態を変えずに失敗する", async () => {
     vi.spyOn(env.QUEUE, "send").mockRejectedValue(new Error("queue is down"));
+    // exports.default 経由だと、ハンドラーが投げた例外を workerd が未処理の例外として
+    // 標準エラーに出す（テストは成功する）ので、ハンドラーを直接呼ぶ
+    const body = new FormData();
+    body.set("id", "123");
+    const request = new Request(`${ORIGIN}/enqueue`, {
+      method: "POST",
+      body,
+      headers: { Origin: ORIGIN },
+    });
 
-    await expect(postEnqueue("123")).rejects.toThrow("queue is down");
+    await expect(admin.fetch(request, env)).rejects.toThrow("queue is down");
     expect(await storedState(123)).toBeNull();
   });
 
@@ -186,6 +196,65 @@ describe("POST /enqueue", () => {
       .bind(123)
       .first();
     expect(row).toEqual({ state: "enqueued", error_message: null });
+  });
+
+  describe("ID の解釈", () => {
+    it.each([
+      ["数値", "123", 123],
+      ["前後に空白や改行がある数値", "  123 \n", 123],
+      ["HN の item URL", "https://news.ycombinator.com/item?id=456", 456],
+      [
+        "id 以外のクエリもある URL",
+        "https://news.ycombinator.com/item?p=2&id=456&x=1",
+        456,
+      ],
+      [
+        "前後に空白がある URL",
+        "  https://news.ycombinator.com/item?id=456 ",
+        456,
+      ],
+    ])("%s は ID として受け付ける", async (_, input, itemId) => {
+      const send = vi.spyOn(env.QUEUE, "send");
+
+      const res = await postEnqueue(input);
+
+      expect(await res.text()).toContain(`ID ${itemId} の処理をキューに追加`);
+      expect(send).toHaveBeenCalledWith({ itemId });
+      expect(await storedState(itemId)).toBe("enqueued");
+    });
+
+    it.each([
+      ["数字以外", "abc"],
+      ["数字の後に文字が続く", "12abc"],
+      ["先頭が 0 の数値", "0123"],
+      ["小数", "12.5"],
+      ["id クエリのない URL", "https://news.ycombinator.com/news"],
+      ["id クエリが数値でない URL", "https://news.ycombinator.com/item?id=abc"],
+      ["id クエリが空の URL", "https://news.ycombinator.com/item?id="],
+    ])("%s は拒否して、キューにも D1 にも触れない", async (_, input) => {
+      const send = vi.spyOn(env.QUEUE, "send");
+
+      const res = await postEnqueue(input);
+
+      expect(await res.text()).toContain(
+        "は有効な HN item ID または URL ではありません",
+      );
+      expect(send).not.toHaveBeenCalled();
+      expect(
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM processed_items").first(
+          "n",
+        ),
+      ).toBe(0);
+    });
+
+    it.each([
+      ["空文字", ""],
+      ["空白だけ", "   "],
+    ])("%s は ID の入力を求める", async (_, input) => {
+      const res = await postEnqueue(input);
+
+      expect(await res.text()).toContain("ID を入力してください");
+    });
   });
 
   it("同じオリジンからの POST はキューに追加する", async () => {
