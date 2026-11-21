@@ -1,5 +1,5 @@
 import { Temporal } from "temporal-polyfill";
-import { stripHtml } from "@hn-feed/shared/html";
+import { htmlToText, stripHtml } from "@hn-feed/shared/html";
 import { readBodyText } from "./decode.ts";
 
 const MAX_CONTENT_LENGTH = 15_000;
@@ -92,7 +92,7 @@ async function readableParts(
       }),
     )
     .text();
-  const page = stripHtml(cleanedHtml);
+  const page = htmlToText(cleanedHtml);
   const segments = cleanedHtml.split(startMark);
   if (segments.length !== 2) return { page, article: null };
   // </article> が無くても親の終了タグで閉じたものとして印が入る。
@@ -100,7 +100,7 @@ async function readableParts(
   const end = segments[1].indexOf(endMark);
   return {
     page,
-    article: end === -1 ? null : stripHtml(segments[1].slice(0, end)),
+    article: end === -1 ? null : htmlToText(segments[1].slice(0, end)),
   };
 }
 

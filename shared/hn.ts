@@ -244,7 +244,7 @@ function makeSubtreeCounter() {
 }
 
 // HN のリンクテキストは URL かその省略形だけなので、href に置き換えても情報は減らない
-function commentToText(html: string): string {
+export function hnHtmlToText(html: string): string {
   return decodeHtmlEntities(
     html
       .replace(/<a\s[^>]*href="([^"]*)"[^>]*>.*?<\/a>/gs, "$1")
@@ -305,10 +305,7 @@ export function flattenTopComments(
     if (selected.has(node)) {
       const author = node.author ?? "-";
       const indent = "  ".repeat(depth);
-      const text = commentToText(node.text ?? "-").replace(
-        /\n/g,
-        `\n${indent}`,
-      );
+      const text = hnHtmlToText(node.text ?? "-").replace(/\n/g, `\n${indent}`);
       result.push(`${indent}[${author}]: ${text}`);
     }
 

@@ -341,6 +341,23 @@ describe("fetchArticleContent", () => {
     expect(result.status === "ok" && result.method).toBe("raw");
   });
 
+  it("raw の HTML の本文はエンティティをデコードする", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><main>${BODY}<p>A &amp; B &lt;tag&gt; &#x2F; &amp;amp;</p></main></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `${BODY} A & B <tag> / &amp;`,
+    );
+  });
+
   it("raw は text/plain をそのまま本文として読む", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {

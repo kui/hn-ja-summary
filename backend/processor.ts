@@ -3,8 +3,8 @@ import {
   countComments,
   fetchHNItemWithComments,
   flattenTopComments,
+  hnHtmlToText,
 } from "@hn-feed/shared/hn";
-import { stripHtml } from "@hn-feed/shared/html";
 import type { FeedItem } from "@hn-feed/shared/feed";
 import { PermanentError } from "@hn-feed/shared/errors";
 import {
@@ -106,7 +106,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   const commentCount = countComments(algoliaItem);
   const points = algoliaItem.points;
 
-  const postText = algoliaItem.text ? stripHtml(algoliaItem.text) : null;
+  const postText = algoliaItem.text ? hnHtmlToText(algoliaItem.text) : null;
 
   let article: ArticleInput;
   let articleFetchMethod: string;

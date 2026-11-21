@@ -36,3 +36,9 @@ export function decodeHtmlEntities(s: string): string {
     },
   );
 }
+
+// エンティティのデコードはタグを除いたあとに 1 回だけ行う。先にデコードすると、
+// 本文中の &lt;b&gt; がタグとして消える
+export function htmlToText(html: string): string {
+  return decodeHtmlEntities(stripHtml(html));
+}
