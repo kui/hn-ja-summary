@@ -89,6 +89,27 @@ describe("generateSummary", () => {
     expect(init?.signal).toBe(timeout.mock.results[0]!.value);
   });
 
+  it("外部入力を囲む区切り文字は呼ぶたびに変える", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => geminiOk());
+
+    await summarize();
+    await summarize();
+
+    const ids = fetchMock.mock.calls.map(([, init]) => {
+      const prompt: string = JSON.parse(String(init?.body)).contents[0].parts[0]
+        .text;
+      const id = /<<<ARTICLE_START_([0-9a-f]{16})>>>/.exec(prompt)?.[1];
+      for (const mark of ["ARTICLE_END", "COMMENTS_START", "COMMENTS_END"]) {
+        expect(prompt).toContain(`<<<${mark}_${id}>>>`);
+      }
+      return id;
+    });
+    expect(ids[0]).toBeDefined();
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
   it.each([400, 408, 429, 500, 503, 504])(
     "%i は再試行の対象として GeminiRejectedError 以外を投げる",
     async (status) => {
