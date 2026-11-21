@@ -1,6 +1,11 @@
 import { env } from "cloudflare:workers";
 import { Temporal } from "temporal-polyfill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MIN_AGE_HOURS,
+  MIN_COMMENTS,
+  SEARCH_WINDOW_HOURS,
+} from "@hn-feed/shared/filter";
 import { setCompleted } from "@hn-feed/shared/state";
 import { scheduled } from "./poller.ts";
 
@@ -78,6 +83,19 @@ describe("scheduled", () => {
       await setCompleted(env.DB, itemId);
     });
     expect(await storedState(NEW_ID)).toBe("completed");
+  });
+
+  it("filter.ts の掲載条件で候補を検索する", async () => {
+    await poll();
+
+    const url = new URL(String(vi.mocked(fetch).mock.calls[0][0]));
+    const filters = url.searchParams.get("numericFilters")!.split(",");
+    const bound = (op: string) =>
+      Number(filters.find((f) => f.startsWith(`created_at_i${op}`))!.slice(14));
+    expect(bound("<=") - bound(">=")).toBe(
+      (SEARCH_WINDOW_HOURS - MIN_AGE_HOURS) * 3600,
+    );
+    expect(filters).toContain(`num_comments>=${MIN_COMMENTS}`);
   });
 
   // 行を書かずに止まるので、次の実行でまた候補になる
