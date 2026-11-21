@@ -134,14 +134,15 @@ function cursorUrl(c: Cursor): string {
   return `/?cursor=${c.createdAt}-${c.id}`;
 }
 
-// id のない形は以前のカーソルで、その時刻の記事をすべて含めていたので、id を最大にして同じ範囲を出す
+// id のない形は、その時刻の記事をすべて含める
 function parseCursor(param: string | null): Cursor | null {
   const m = param?.match(/^(\d+)(?:-(\d+))?$/);
   if (!m) return null;
-  return {
-    createdAt: Number(m[1]),
-    id: m[2] === undefined ? Number.MAX_SAFE_INTEGER : Number(m[2]),
-  };
+  const createdAt = Number(m[1]);
+  const id = m[2] === undefined ? Number.MAX_SAFE_INTEGER : Number(m[2]);
+  if (!Number.isSafeInteger(createdAt) || !Number.isSafeInteger(id))
+    return null;
+  return { createdAt, id };
 }
 
 async function handleFeed(env: Env): Promise<Response> {

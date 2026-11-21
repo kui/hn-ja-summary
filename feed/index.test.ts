@@ -384,11 +384,31 @@ describe("一覧ページ", () => {
     expect(html).toContain('<a href="/?cursor=2000-4">← 新しい記事</a>');
   });
 
-  it("数値でないカーソルは無視して先頭から出す", async () => {
-    await insertAt(1, 1000);
+  it.each(["abc", "123abc", "1000-", "1000-abc"])(
+    "数値でないカーソル %s は無視して先頭から出す",
+    async (cursor) => {
+      await insertAt(1, 1000);
 
-    expect(await get("/?cursor=abc")).toContain("title-1");
-  });
+      expect(await get(`/?cursor=${cursor}`)).toContain("title-1");
+    },
+  );
+
+  it.each([
+    ["作成日時", `${"9".repeat(309)}-1`],
+    ["id", `1000-${"9".repeat(309)}`],
+  ])(
+    "%s が安全な整数の範囲を超えるカーソルは無視して先頭から出す",
+    async (_, cursor) => {
+      await insertAt(1, 1000);
+      await insertAt(2, 2000);
+
+      const html = await get(`/?cursor=${cursor}`);
+
+      expect(html).toContain("title-1<");
+      expect(html).toContain("title-2<");
+      expect(html).not.toContain("<nav");
+    },
+  );
 });
 
 describe("RSS", () => {
