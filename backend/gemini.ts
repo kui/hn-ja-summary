@@ -1,12 +1,12 @@
 import { PermanentError } from "@hn-feed/shared/errors";
+import type { ArticleInput } from "./article";
+import type { MissingArticleStatus, SummaryDoc } from "./summary";
 import {
-  parseSummaryDoc,
-  renderSummaryHtml,
+  ALLOWED_TAGS,
   stripUnsourcedSummaryLinks,
   SummaryFormatError,
   validateSummaryDoc,
 } from "./summary";
-import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";
 export const MODEL = "gemini-3.5-flash-lite";
@@ -21,7 +21,7 @@ const MAX_OUTPUT_TOKENS = 8192;
 
 const HTML_FRAGMENT_RULES = [
   "HTML断片として出力する。",
-  "見出しタグは含めない。使用可能なタグは p, ul, ol, li, strong, em, code, sup, sub, a, table, thead, tbody, tr, th, td, br のみ。",
+  `見出しタグは含めない。使用可能なタグは ${[...ALLOWED_TAGS].join(", ")} のみ。`,
   "開いたタグは必ず閉じる。属性は a の href のみ許可し、値は http:// または https:// で始まるURLを二重引用符で囲む。",
   "記号 < > & はHTMLエスケープする。",
   "投稿に含まれていないURLをリンクすることは厳禁。",
@@ -115,13 +115,11 @@ interface GeminiResponse {
 }
 
 export interface SummaryResult {
-  summaryHtml: string;
+  doc: SummaryDoc;
   inputTokens: number;
   outputTokens: number;
   thoughtsTokens: number;
 }
-
-type MissingArticleStatus = Exclude<ArticleInput["status"], "ok">;
 
 const MISSING_ARTICLE_PROMPT: Record<MissingArticleStatus, string> = {
   no_url: "（この投稿には元記事URLがなく、本文は存在しない。）",
@@ -129,14 +127,6 @@ const MISSING_ARTICLE_PROMPT: Record<MissingArticleStatus, string> = {
     "（このサイトはアクセス制限が厳しいため本文の取得をスキップした。）",
   fetch_failed:
     "（本文の取得に失敗した。JavaScriptレンダリングやCloudflare等のアクセス制限が原因と考えられる。）",
-};
-
-const MISSING_ARTICLE_NOTICE: Record<MissingArticleStatus, string> = {
-  no_url: "この投稿には元記事がないため、以下はHNコメントのみに基づきます。",
-  fetch_skipped:
-    "元記事の本文を取得していないため、以下はHNコメントのみに基づきます。",
-  fetch_failed:
-    "元記事の本文を取得できなかったため、以下はHNコメントのみに基づきます。",
 };
 
 // 区切り文字が固定だと、本文やコメントに同じ文字列を書いて外部入力の範囲を閉じ、
@@ -151,11 +141,6 @@ function articleContentForPrompt(article: ArticleInput): string {
   return MISSING_ARTICLE_PROMPT[article.status];
 }
 
-// class="notice" は feed 側が og:description の生成元から除外するための目印
-function missingArticleNoticeHtml(status: MissingArticleStatus): string {
-  return `<p class="notice">${MISSING_ARTICLE_NOTICE[status]}</p>`;
-}
-
 export async function generateSummary(
   apiKey: string,
   itemId: number,
@@ -164,7 +149,6 @@ export async function generateSummary(
   article: ArticleInput,
   comments: string[],
 ): Promise<SummaryResult> {
-  const hnUrl = `https://news.ycombinator.com/item?id=${itemId}`;
   const commentsText =
     comments.length > 0 ? comments.join("\n\n") : "（コメントなし）";
   const id = promptDelimiterId();
@@ -221,32 +205,87 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
     );
   }
   const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
-  const parsed = parseSummaryDoc(text.trim());
+  const parsed = parseSummaryResponse(text.trim(), article.status);
+  // 検証はモデルの出力そのものに対して行う。リンクを外すと HTML が書き換わり、許可外の属性もリンクごと消えるため
   await validateSummaryDoc(parsed);
-  const articleHtml =
-    article.status === "ok"
-      ? parsed.articleHtml
-      : missingArticleNoticeHtml(article.status);
-  if (articleHtml === undefined) {
-    throw new SummaryFormatError("articleHtml is missing");
-  }
   // モデルが「投稿に含まれていないURLをリンクすることは厳禁」の指示を守らなかった分は、
   // 作り直さずにリンクだけ外す（作り直すと Flex のリクエストが増えるため）。
   // 照合先はモデルに渡したプロンプトそのもの。
-  const { doc, removed } = await stripUnsourcedSummaryLinks(
-    { ...parsed, articleHtml },
-    prompt,
-  );
+  const { doc, removed } = await stripUnsourcedSummaryLinks(parsed, prompt);
   for (const { field, href } of removed) {
     console.warn(
       `  [gemini] removed unsourced link: item=${itemId} field=${field} href=${href === null ? "(none)" : JSON.stringify(href.slice(0, 200))}`,
     );
   }
   return {
-    summaryHtml: renderSummaryHtml(doc, articleUrl, hnUrl),
+    doc,
     inputTokens,
     outputTokens,
     thoughtsTokens,
+  };
+}
+
+function requireNonEmpty(value: string, field: string): string {
+  if (value.trim() === "") {
+    throw new SummaryFormatError(`${field} is empty`);
+  }
+  return value;
+}
+
+function asString(v: unknown, field: string): string {
+  if (typeof v !== "string") {
+    throw new SummaryFormatError(`${field} is not a string`);
+  }
+  return v;
+}
+
+// 本文が無いときは articleHtml をレスポンススキーマから外しているので読まず、本文が無い理由だけを持たせる
+export function parseSummaryResponse(
+  text: string,
+  articleStatus: ArticleInput["status"],
+): SummaryDoc {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    throw new SummaryFormatError(`invalid JSON: ${String(err)}`);
+  }
+  if (typeof raw !== "object" || raw === null) {
+    throw new SummaryFormatError("response is not an object");
+  }
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.topics)) {
+    throw new SummaryFormatError("topics is not an array");
+  }
+  return {
+    jaTitle: requireNonEmpty(asString(o.jaTitle, "jaTitle"), "jaTitle"),
+    article:
+      articleStatus === "ok"
+        ? {
+            status: "ok",
+            html: requireNonEmpty(
+              asString(o.articleHtml, "articleHtml"),
+              "articleHtml",
+            ),
+          }
+        : { status: articleStatus },
+    hnOverviewHtml: requireNonEmpty(
+      asString(o.hnOverviewHtml, "hnOverviewHtml"),
+      "hnOverviewHtml",
+    ),
+    topics: o.topics.map((t, i) => {
+      if (typeof t !== "object" || t === null) {
+        throw new SummaryFormatError(`topics[${i}] is not an object`);
+      }
+      const to = t as Record<string, unknown>;
+      return {
+        heading: requireNonEmpty(
+          asString(to.heading, `topics[${i}].heading`),
+          `topics[${i}].heading`,
+        ),
+        bodyHtml: asString(to.bodyHtml, `topics[${i}].bodyHtml`),
+      };
+    }),
   };
 }
 

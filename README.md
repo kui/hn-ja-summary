@@ -44,6 +44,7 @@ admin-worker (fetch handler, Cloudflare Access で保護)
 ```
 shared/      共通型定義・HN API クライアント・フィルタ・処理状態の更新・HTML ユーティリティ
 backend/     scheduled (poller) + queue (processor) を担う Worker
+             (gemini.ts: モデル呼び出しと出力の変換、summary.ts: 要約 HTML の検証と組み立て)
 feed/        RSS 配信・要約 HTML ページ配信 Worker
 admin/       手動キュー投入 UI Worker（Cloudflare Access で保護）
 migrations/  D1 共通マイグレーション

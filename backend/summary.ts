@@ -1,22 +1,23 @@
 import { decodeHtmlEntities, escapeHtml } from "@hn-feed/shared/html";
+import type { ArticleInput } from "./article";
 
 export interface SummaryTopic {
   heading: string;
   bodyHtml: string;
 }
 
-// モデル出力そのもの。元記事本文が無いときは articleHtml をレスポンススキーマから
-// 外して生成させないため、そのケースに限り欠落する。
-export interface ParsedSummaryDoc {
+export type MissingArticleStatus = Exclude<ArticleInput["status"], "ok">;
+
+// 本文が無いときは要約を持たず、描画時に理由ごとの固定の注記を出す
+export type ArticleSummary =
+  | { status: "ok"; html: string }
+  | { status: MissingArticleStatus };
+
+export interface SummaryDoc {
   jaTitle: string;
-  articleHtml?: string;
+  article: ArticleSummary;
   hnOverviewHtml: string;
   topics: SummaryTopic[];
-}
-
-// レンダリング入力。欠落ケースは呼び出し側が固定の注記で埋めてからここへ渡す。
-export interface SummaryDoc extends ParsedSummaryDoc {
-  articleHtml: string;
 }
 
 export class SummaryFormatError extends Error {
@@ -26,7 +27,7 @@ export class SummaryFormatError extends Error {
   }
 }
 
-const ALLOWED_TAGS = new Set([
+export const ALLOWED_TAGS: ReadonlySet<string> = new Set([
   "p",
   "ul",
   "ol",
@@ -95,69 +96,12 @@ export async function validateFragment(html: string): Promise<void> {
   }
 }
 
-export async function validateSummaryDoc(doc: ParsedSummaryDoc): Promise<void> {
-  if (doc.articleHtml !== undefined) await validateFragment(doc.articleHtml);
+export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
+  if (doc.article.status === "ok") await validateFragment(doc.article.html);
   await validateFragment(doc.hnOverviewHtml);
   for (const topic of doc.topics) {
     await validateFragment(topic.bodyHtml);
   }
-}
-
-function requireNonEmpty(value: string, field: string): string {
-  if (value.trim() === "") {
-    throw new SummaryFormatError(`${field} is empty`);
-  }
-  return value;
-}
-
-function asString(v: unknown, field: string): string {
-  if (typeof v !== "string") {
-    throw new SummaryFormatError(`${field} is not a string`);
-  }
-  return v;
-}
-
-export function parseSummaryDoc(text: string): ParsedSummaryDoc {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch (err) {
-    throw new SummaryFormatError(`invalid JSON: ${String(err)}`);
-  }
-  if (typeof raw !== "object" || raw === null) {
-    throw new SummaryFormatError("response is not an object");
-  }
-  const o = raw as Record<string, unknown>;
-  if (!Array.isArray(o.topics)) {
-    throw new SummaryFormatError("topics is not an array");
-  }
-  return {
-    jaTitle: requireNonEmpty(asString(o.jaTitle, "jaTitle"), "jaTitle"),
-    articleHtml:
-      o.articleHtml === undefined
-        ? undefined
-        : requireNonEmpty(
-            asString(o.articleHtml, "articleHtml"),
-            "articleHtml",
-          ),
-    hnOverviewHtml: requireNonEmpty(
-      asString(o.hnOverviewHtml, "hnOverviewHtml"),
-      "hnOverviewHtml",
-    ),
-    topics: o.topics.map((t, i) => {
-      if (typeof t !== "object" || t === null) {
-        throw new SummaryFormatError(`topics[${i}] is not an object`);
-      }
-      const to = t as Record<string, unknown>;
-      return {
-        heading: requireNonEmpty(
-          asString(to.heading, `topics[${i}].heading`),
-          `topics[${i}].heading`,
-        ),
-        bodyHtml: asString(to.bodyHtml, `topics[${i}].bodyHtml`),
-      };
-    }),
-  };
 }
 
 const INLINE_TAGS = new Set(["strong", "em", "code", "sup", "sub", "a", "br"]);
@@ -255,7 +199,10 @@ export async function stripUnsourcedSummaryLinks(
   const removed: RemovedLink[] = [];
   const strip = (html: string, field: string) =>
     stripUnsourcedLinks(html, field, allowed, removed);
-  const articleHtml = await strip(doc.articleHtml, "articleHtml");
+  const article: ArticleSummary =
+    doc.article.status === "ok"
+      ? { ...doc.article, html: await strip(doc.article.html, "articleHtml") }
+      : doc.article;
   const hnOverviewHtml = await strip(doc.hnOverviewHtml, "hnOverviewHtml");
   // ログの順番を出力の順に揃えるため、並行させずに 1 つずつ処理する
   const topics = [];
@@ -265,7 +212,7 @@ export async function stripUnsourcedSummaryLinks(
       bodyHtml: await strip(topic.bodyHtml, `topics[${i}].bodyHtml`),
     });
   }
-  return { doc: { ...doc, articleHtml, hnOverviewHtml, topics }, removed };
+  return { doc: { ...doc, article, hnOverviewHtml, topics }, removed };
 }
 
 // 一覧ページの概要は <p> から拾うが、モデルは地の文を <p> で囲まずに返すことがある。
@@ -307,6 +254,20 @@ export function wrapLooseText(html: string): string {
   return out.join("");
 }
 
+const MISSING_ARTICLE_NOTICE: Record<MissingArticleStatus, string> = {
+  no_url: "この投稿には元記事がないため、以下はHNコメントのみに基づきます。",
+  fetch_skipped:
+    "元記事の本文を取得していないため、以下はHNコメントのみに基づきます。",
+  fetch_failed:
+    "元記事の本文を取得できなかったため、以下はHNコメントのみに基づきます。",
+};
+
+// class="notice" は feed 側が og:description の生成元から除外するための目印
+function articleHtml(article: ArticleSummary): string {
+  if (article.status === "ok") return wrapLooseText(article.html).trim();
+  return `<p class="notice">${MISSING_ARTICLE_NOTICE[article.status]}</p>`;
+}
+
 function linkList(url: string): string {
   const escaped = escapeHtml(url);
   return `<ul><li><a href="${escaped}">${escaped}</a></li></ul>`;
@@ -328,7 +289,7 @@ ${wrapLooseText(topic.bodyHtml).trim()}
     `<section id="article">
 <h2>${escapeHtml(doc.jaTitle)}</h2>
 ${linkList(articleUrl)}
-${wrapLooseText(doc.articleHtml).trim()}
+${articleHtml(doc.article)}
 </section>`,
     `<section id="hn">
 <h2>HNコミュニティの反応</h2>
