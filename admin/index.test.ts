@@ -238,6 +238,11 @@ describe("POST /enqueue", () => {
         "https://news.ycombinator.com/item?id=12abc",
       ],
       ["HN 以外のホストの URL", "https://example.org/item?id=5"],
+      ["item 以外のパスの URL", "https://news.ycombinator.com/user?id=12345"],
+      [
+        "http と https 以外のスキームの URL",
+        "ftp://news.ycombinator.com/item?id=5",
+      ],
       [
         "HN に似たホスト名の URL",
         "https://news.ycombinator.com.example.org/item?id=5",

@@ -34,7 +34,7 @@ function isStale(enqueuedAtMs: number | null): boolean {
   );
 }
 
-// HN の item ID は 1 以上の整数。先頭 0・符号・小数・数字以外の混じる文字列は受け付けない
+// HN の item ID は 1 以上の整数
 function parseDigits(text: string): number | null {
   if (!/^[1-9][0-9]*$/.test(text)) return null;
   const n = Number(text);
@@ -51,11 +51,13 @@ function parseItemId(input: string): number | null {
 
   try {
     const url = new URL(trimmed);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
     if (url.hostname !== HN_HOSTNAME) return null;
+    if (url.pathname !== "/item") return null;
     const idParam = url.searchParams.get("id");
     if (idParam !== null) return parseDigits(idParam);
   } catch {
-    // input is not a URL
+    // URL として解釈できない入力
   }
   return null;
 }
