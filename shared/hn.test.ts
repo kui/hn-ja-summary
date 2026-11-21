@@ -4,6 +4,7 @@ import {
   fetchCandidateStories,
   fetchHNItemWithComments,
   flattenTopComments,
+  hnHtmlToText,
 } from "./hn.ts";
 import type { AlgoliaComment } from "./hn.ts";
 
@@ -17,6 +18,24 @@ function makeComment(
 }
 
 const LONG = "a".repeat(20); // MIN_TEXT_LENGTH を満たす最小文字列
+
+describe("hnHtmlToText", () => {
+  it("省略表示のリンクを href の完全な URL に置き換え、エンティティをデコードする", () => {
+    expect(
+      hnHtmlToText(
+        'Repo: <a href="https:&#x2F;&#x2F;github.com&#x2F;foo&#x2F;bar&#x2F;blob&#x2F;main&#x2F;README.md" rel="nofollow">https:&#x2F;&#x2F;github.com&#x2F;foo&#x2F;bar&#x2F;blob&#x2F;ma...</a><p>It&#x27;s &quot;fast&quot; &amp; small',
+      ),
+    ).toBe(
+      `Repo: https://github.com/foo/bar/blob/main/README.md\nIt's "fast" & small`,
+    );
+  });
+
+  it("エンティティは 1 回だけデコードする", () => {
+    expect(hnHtmlToText("a &amp;#x2F; b &amp;lt;i&amp;gt;")).toBe(
+      "a &#x2F; b &lt;i&gt;",
+    );
+  });
+});
 
 describe("flattenTopComments", () => {
   it("空配列を渡すと空配列を返す", () => {

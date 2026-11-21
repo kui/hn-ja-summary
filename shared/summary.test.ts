@@ -344,6 +344,16 @@ describe("stripUnsourcedSummaryLinks", () => {
     ).toEqual({ html: "x", removed: ["https://x.test/a#zz"] });
   });
 
+  it("source のエンティティはデコードし直さない", async () => {
+    // source の &amp; はデコード済みの本文に書かれた文字列なので、& とは別の文字として扱う
+    const source = "https://x.test/?a=1&amp;b=2";
+    expect(
+      await strip('<a href="https://x.test/?a=1&amp;b=2">x</a>', source),
+    ).toEqual({ html: "x", removed: ["https://x.test/?a=1&b=2"] });
+    const kept = '<a href="https://x.test/?a=1&amp;amp;b=2">x</a>';
+    expect(await strip(kept, source)).toEqual({ html: kept, removed: [] });
+  });
+
   it("閉じタグの空白や単引用符の href も正しく扱う", async () => {
     expect(
       await strip(
@@ -357,16 +367,6 @@ describe("stripUnsourcedSummaryLinks", () => {
   });
 
   it.each([
-    [
-      "HN 形式でエンコードされた投稿本文",
-      "https:&#x2F;&#x2F;github.com&#x2F;foo&#x2F;bar",
-      "https://github.com/foo/bar",
-    ],
-    [
-      "&amp; が残った記事本文",
-      "https://x.test/?a=1&amp;b=2",
-      "https://x.test/?a=1&amp;b=2",
-    ],
     [
       "末尾のスラッシュの有無",
       "https://example.com/x",

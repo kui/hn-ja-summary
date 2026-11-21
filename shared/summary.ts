@@ -192,8 +192,7 @@ function normalizeUrl(url: string): string | null {
   );
 }
 
-function sourceUrls(source: string): Set<string> {
-  const text = decodeHtmlEntities(source);
+function sourceUrls(text: string): Set<string> {
   const starts = [...text.matchAll(SOURCE_URL_START)].map((m) => m.index);
   const urls = new Set<string>();
   for (const start of starts) {
@@ -245,7 +244,8 @@ async function stripUnsourcedLinks(
 
 /**
  * 要約中のリンクのうち、href が source（モデルに渡したテキスト）に現れない URL のものは
- * `<a>` を外してテキストだけ残す。
+ * `<a>` を外してテキストだけ残す。source はエンティティをデコード済みのテキストとして扱い、
+ * デコードし直さない。
  */
 export async function stripUnsourcedSummaryLinks(
   doc: SummaryDoc,

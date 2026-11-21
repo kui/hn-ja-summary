@@ -341,6 +341,49 @@ describe("fetchArticleContent", () => {
     expect(result.status === "ok" && result.method).toBe("raw");
   });
 
+  it("raw の HTML の本文はエンティティをデコードする", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><main>${BODY}<p>A &amp; B &lt;tag&gt; &#x2F; &amp;amp;</p></main></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `${BODY} A & B <tag> / &amp;`,
+    );
+  });
+
+  it("raw の HTML の本文では、絶対 URL のリンク先をテキストのあとに残す", async () => {
+    const links = [
+      '<a href="https://x.test/a?b=1&amp;c=2">記事</a>',
+      '<a href="https://ja.wikipedia.org/wiki/東京"><b>東京</b></a>',
+      '<a href="https://x.test/?q=&lt;b&gt;">検索</a>',
+      '<a href="https://x.test/same">https://x.test/same</a>',
+      '<a href="/about">相対</a>',
+      '<a href="#fn1">脚注</a>',
+      '<a href="mailto:a@x.test">メール</a>',
+    ].join(" ");
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `<html><body><nav><a href="https://x.test/nav">メニュー</a></nav><main>${BODY}<p>${links}</p></main></body></html>`,
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(
+      `${BODY} 記事 (https://x.test/a?b=1&c=2) 東京 (https://ja.wikipedia.org/wiki/東京) 検索 (https://x.test/?q=<b>) https://x.test/same 相対 脚注 メール`,
+    );
+  });
+
   it("raw は text/plain をそのまま本文として読む", async () => {
     mockFetch((url) => {
       if (url.startsWith("https://example.com/")) {
@@ -373,6 +416,25 @@ describe("fetchArticleContent", () => {
       expect(result.status === "ok" && result.content).toBe(BODY);
     },
   );
+
+  it("raw は <meta charset> だけで宣言した Shift_JIS の本文を正しくデコードする", async () => {
+    // デコード後の HTML にも <meta charset="Shift_JIS"> が残るので、HTMLRewriter がそれで読み直さないことを確かめる
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return encodedHtmlResponse(
+          SJIS_BUNSHOU,
+          "text/html",
+          '<meta charset="Shift_JIS">',
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.method).toBe("raw");
+    expect(result.status === "ok" && result.content).toBe(BODY);
+  });
 
   it("raw の本文が文字化けしていたら使わず、firecrawl を呼ぶ", async () => {
     mockFetch((url) => {

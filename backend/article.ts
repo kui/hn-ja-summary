@@ -1,5 +1,9 @@
 import { Temporal } from "temporal-polyfill";
-import { stripHtml } from "@hn-feed/shared/html";
+import {
+  decodeHtmlEntities,
+  htmlToText,
+  stripHtml,
+} from "@hn-feed/shared/html";
 import { readBodyText } from "./decode.ts";
 
 const MAX_CONTENT_LENGTH = 15_000;
@@ -53,6 +57,7 @@ async function readableParts(
   // 本文の一部なので残す。HTMLRewriter の :not() は子孫結合子を書くと
   // 何にも一致しないため、開始・終了タグで article の深さを数えて判定する
   let articleDepth = 0;
+  let link: { href: string; text: string } | null = null;
   const cleanedHtml = await new HTMLRewriter()
     .on("article", {
       element(el) {
@@ -64,6 +69,26 @@ async function readableParts(
         el.onEndTag(() => {
           articleDepth--;
         });
+      },
+    })
+    // リンク先は画面に書かれていないことが多いので、`テキスト (URL)` の形で本文に残す。
+    // 相対 URL はほとんどがサイト内の移動用で、本文の上限を使ってしまうので残さない
+    .on("a[href]", {
+      element(el) {
+        // getAttribute はエンティティをデコードしない
+        const href = decodeHtmlEntities(el.getAttribute("href") ?? "").trim();
+        if (!/^https?:\/\//i.test(href)) return;
+        const current = { href, text: "" };
+        link = current;
+        el.onEndTag((end) => {
+          link = null;
+          if (decodeHtmlEntities(stripHtml(current.text)) === href) return;
+          // テキストとして挿入すると < と & がエスケープされ、htmlToText のデコードで元に戻る
+          end.after(` (${href})`);
+        });
+      },
+      text(chunk) {
+        if (link) link.text += chunk.text;
       },
     })
     .on("script, style, noscript, svg, template, nav", {
@@ -84,15 +109,9 @@ async function readableParts(
         },
       },
     )
-    // HTMLRewriter は <meta charset> を見ず、出力もページの文字コードのままにするので、
-    // 文字列に戻した HTML を UTF-8 として渡す
-    .transform(
-      new Response(html, {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      }),
-    )
+    .transform(new Response(html))
     .text();
-  const page = stripHtml(cleanedHtml);
+  const page = htmlToText(cleanedHtml);
   const segments = cleanedHtml.split(startMark);
   if (segments.length !== 2) return { page, article: null };
   // </article> が無くても親の終了タグで閉じたものとして印が入る。
@@ -100,7 +119,7 @@ async function readableParts(
   const end = segments[1].indexOf(endMark);
   return {
     page,
-    article: end === -1 ? null : stripHtml(segments[1].slice(0, end)),
+    article: end === -1 ? null : htmlToText(segments[1].slice(0, end)),
   };
 }
 
