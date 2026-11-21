@@ -221,8 +221,10 @@ describe("validateSummaryDoc", () => {
   );
 
   it("本文がないときは article を確かめない", async () => {
+    // 本文がない article は html を持たないが、確かめていれば失敗するよう不正な html を持たせる
+    const article = { status: "no_url", html: BAD } as never;
     await expect(
-      validateSummaryDoc(makeDoc({ article: { status: "no_url" } })),
+      validateSummaryDoc(makeDoc({ article })),
     ).resolves.toBeUndefined();
   });
 });
@@ -268,19 +270,26 @@ describe("stripUnsourcedSummaryLinks", () => {
     });
   });
 
+  const EVIL = 'href="https://evil.test/"';
+  const OK = 'href="https://ok.test/"';
   it.each([
-    ['<p><a href="https://evil.test/">x</p>', "<p>x</p>"],
+    [`<p><a ${EVIL}>x</p>`, "<p>x</p>", 1],
+    [`<p><strong><a ${EVIL}>x</strong></p>`, "<p><strong>x</strong></p>", 1],
+    // 閉じられていない <a> が 2 つあると、どちらにも同じ </p> が終了タグとして渡される
+    [`<p><a ${EVIL}>x<a ${EVIL}>y</p>`, "<p>xy</p>", 2],
+    // 外す <a> が </a> を受け取り、残す <a> には </p> が渡される
     [
-      '<p><strong><a href="https://evil.test/">x</strong></p>',
-      "<p><strong>x</strong></p>",
+      `<p><a ${OK}>foo <a ${EVIL}>bar</a></p>`,
+      `<p><a ${OK}>foo bar</a></p>`,
+      1,
     ],
   ])(
-    "閉じられていない a タグを外しても親の閉じタグは残す: %s",
-    async (html, expected) => {
-      const result = await strip(html, "https://example.com/");
+    "閉じられていない a タグがあっても閉じタグの数を保つ: %s",
+    async (html, expected, removedCount) => {
+      const result = await strip(html, "https://ok.test/");
       expect(result).toEqual({
         html: expected,
-        removed: ["https://evil.test/"],
+        removed: Array<string>(removedCount).fill("https://evil.test/"),
       });
       await expect(validateFragment(result.html)).resolves.toBeUndefined();
     },

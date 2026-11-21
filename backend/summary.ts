@@ -96,7 +96,7 @@ export async function validateFragment(html: string): Promise<void> {
   }
 }
 
-// fn が残すログの順番を出力の順に揃えるため、並行させずに 1 つずつ処理する
+// 断片ごとに、出力の順に 1 つずつ fn を呼ぶ（前の呼び出しが終わるまで次を呼ばない）
 async function mapSummaryFragments(
   doc: SummaryDoc,
   fn: (html: string, field: string) => Promise<string>,
@@ -196,13 +196,18 @@ async function stripUnsourcedLinks(
         const raw = el.getAttribute("href");
         const href = raw === null ? null : decodeHtmlEntities(raw);
         const url = href === null ? null : normalizeUrl(href);
-        if (url !== null && allowed.has(url)) return;
-        removed.push({ field, href });
-        el.removeAndKeepContent();
-        // 閉じられていない <a> には親の閉じタグ（<p><a>x</p> の </p>）が終了タグとして渡され、
-        // removeAndKeepContent がそれも消すので、出し直す
+        const keep = url !== null && allowed.has(url);
+        if (!keep) {
+          removed.push({ field, href });
+          el.removeAndKeepContent();
+        }
+        // 閉じられていない <a> には親の閉じタグ（<p><a>x</p> の </p>）が終了タグとして渡される。
+        // 外す <a> では removeAndKeepContent がそれも消すので出し直す。残す <a> の中で外す <a> が
+        // </a> を受け取ると、残す <a> の閉じタグがなくなるので補う。
         el.onEndTag((end) => {
-          if (end.name !== "a") end.after(`</${end.name}>`, { html: true });
+          if (end.name === "a") return;
+          if (keep) end.before("</a>", { html: true });
+          else end.after(`</${end.name}>`, { html: true });
         });
       },
     })
@@ -221,6 +226,7 @@ export async function stripUnsourcedSummaryLinks(
 ): Promise<{ doc: SummaryDoc; removed: RemovedLink[] }> {
   const allowed = sourceUrls(source);
   const removed: RemovedLink[] = [];
+  // mapSummaryFragments が出力の順に 1 つずつ呼ぶので、removed も出力の順に並ぶ
   const stripped = await mapSummaryFragments(doc, (html, field) =>
     stripUnsourcedLinks(html, field, allowed, removed),
   );
