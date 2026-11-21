@@ -151,3 +151,247 @@ describe("RSS", () => {
     expect(description.startsWith(summaryHtml)).toBe(true);
   });
 });
+
+const SECTIONED = (jaTitle: string, article: string, hn: string): string =>
+  `<section id="article"><h2>${jaTitle}</h2>${article}</section><section id="hn">${hn}</section>`;
+
+async function insertAt(id: number, createdAt: number): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO feed_items (id, created_at_ms, title, article_url, hn_url, summary_html, model)
+     VALUES (?, ?, ?, 'https://example.com/', 'https://news.ycombinator.com/item?id=1', '<p>s</p>', 'm')`,
+  )
+    .bind(id, createdAt, `title-${id}`)
+    .run();
+}
+
+describe("記事ページの表示", () => {
+  it("記録のない値は - で表示する", async () => {
+    await insertItem({
+      id: 1,
+      title: "t",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: "<p>s</p>",
+    });
+
+    const html = await get("/items/1");
+
+    for (const label of [
+      "HN投稿日時",
+      "ポイント",
+      "コメント数",
+      "要約コメント数",
+      "記事取得方法",
+      "元記事文字数",
+      "入力トークン数",
+      "出力トークン数",
+      "更新日時",
+    ]) {
+      expect(html).toContain(`<dt>${label}</dt><dd>-</dd>`);
+    }
+  });
+
+  it("値が 0 でも - にせず表示する", async () => {
+    await insertItem({
+      id: 1,
+      title: "t",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: "<p>s</p>",
+    });
+    await env.DB.prepare(
+      "UPDATE feed_items SET points = 0, comment_count = 0 WHERE id = 1",
+    ).run();
+
+    const html = await get("/items/1");
+
+    expect(html).toContain("<dt>ポイント</dt><dd>0</dd>");
+    expect(html).toContain("<dt>コメント数</dt><dd>0</dd>");
+  });
+
+  it("日本語タイトルがあれば、元のタイトルの後ろに括弧で添える", async () => {
+    await insertItem({
+      id: 1,
+      title: "Original",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: SECTIONED("日本語題", "<p>概要</p>", ""),
+    });
+
+    const html = await get("/items/1");
+
+    expect(html).toContain("<title>Original（日本語題）</title>");
+    expect(html).toContain('<meta name="description" content="概要">');
+  });
+
+  it("日本語タイトルも本文もなければ、元のタイトルと既定の説明にする", async () => {
+    await insertItem({
+      id: 1,
+      title: "Original",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: "<ul><li>x</li></ul>",
+    });
+
+    const html = await get("/items/1");
+
+    expect(html).toContain("<title>Original</title>");
+    expect(html).toContain(
+      '<meta name="description" content="Hacker News のトレンド記事を日本語で要約">',
+    );
+  });
+
+  it("存在しない項目は 404 にする", async () => {
+    const res = await exports.default.fetch(
+      `https://${env.WORKERS_DOMAIN}/items/999`,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("ADMIN_URL がなければ 500 にする", async () => {
+    await insertItem({
+      id: 1,
+      title: "t",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: "<p>s</p>",
+    });
+    const { default: feed } = await import("./index.ts");
+
+    const res = await feed.fetch(
+      new Request(`https://${env.WORKERS_DOMAIN}/items/1`),
+      { ...env, ADMIN_URL: "" } as unknown as Env,
+    );
+
+    expect(res.status).toBe(500);
+  });
+});
+
+describe("一覧ページの表示", () => {
+  async function listed(summaryHtml: string): Promise<string> {
+    await insertItem({
+      id: 1,
+      title: "Original",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml,
+    });
+    return await get("/");
+  }
+
+  it("日本語タイトルと記事の最初の段落を出す", async () => {
+    const html = await listed(
+      SECTIONED("日本語題", "<p>記事の概要</p>", "<p>議論の概要</p>"),
+    );
+
+    expect(html).toContain('<a href="/items/1">日本語題</a>');
+    expect(html).toContain("<p>記事の概要</p>");
+    expect(html).not.toContain("議論の概要");
+  });
+
+  it("記事の段落が定型の注記だけなら、HN の議論の段落を出す", async () => {
+    const html = await listed(
+      SECTIONED(
+        "日本語題",
+        '<p class="notice">本文を取得できませんでした。</p>',
+        "<p>議論の概要</p>",
+      ),
+    );
+
+    expect(html).toContain("<p>議論の概要</p>");
+    expect(html).not.toContain("本文を取得できませんでした");
+  });
+
+  it("section のない古い要約は全体から日本語タイトルと段落を拾う", async () => {
+    const html = await listed("<h2>古い題</h2><p>古い概要</p>");
+
+    expect(html).toContain('<a href="/items/1">古い題</a>');
+    expect(html).toContain("<p>古い概要</p>");
+  });
+
+  it("日本語タイトルも段落もなければ、元のタイトルだけを出す", async () => {
+    const html = await listed("<ul><li>x</li></ul>");
+
+    expect(html).toContain('<a href="/items/1">Original</a>');
+    expect(html).toMatch(/Original<\/a><\/h2>\s*<\/article>/);
+  });
+
+  it("日本語タイトルは記事の section だけから拾い、HN の section の見出しは使わない", async () => {
+    const html = await listed(
+      `<section id="article"><p>記事の概要</p></section><section id="hn"><h2>議論の見出し</h2></section>`,
+    );
+
+    expect(html).toContain('<a href="/items/1">Original</a>');
+    expect(html).not.toContain("議論の見出し");
+  });
+
+  it("ちょうど 20 件なら次のページへのリンクを出さない", async () => {
+    for (let i = 1; i <= 20; i++) await insertAt(i, i * 1000);
+
+    const html = await get("/");
+
+    expect(html.match(/<article>/g)).toHaveLength(20);
+    expect(html).not.toContain("<nav");
+  });
+
+  it("記事が 1 件もなくても空の一覧を返す", async () => {
+    const html = await get("/");
+
+    expect(html).toContain("<h1>HN Summary Feed</h1>");
+    expect(html).not.toContain("<article>");
+    expect(html).not.toContain("<nav");
+  });
+
+  it("20 件を超えると次のページへのリンクを出す", async () => {
+    for (let i = 1; i <= 21; i++) await insertAt(i, i * 1000);
+
+    const html = await get("/");
+
+    // 新しい順に 20 件で、21 件目（最古）の作成日時がカーソルになる
+    expect(html.match(/<article>/g)).toHaveLength(20);
+    expect(html).not.toContain("title-1<");
+    expect(html).toContain('<a href="/?cursor=1000">古い記事 →</a>');
+    expect(html).toContain('<span class="disabled">← 新しい記事</span>');
+  });
+
+  it("カーソルの先に新しい記事があれば、前のページへのリンクを出す", async () => {
+    for (let i = 1; i <= 3; i++) await insertAt(i, i * 1000);
+
+    const html = await get("/?cursor=1000");
+
+    expect(html.match(/<article>/g)).toHaveLength(1);
+    expect(html).toContain('<a href="/?cursor=3000">← 新しい記事</a>');
+    expect(html).toContain('<span class="disabled">古い記事 →</span>');
+  });
+
+  it("数値でないカーソルは無視して先頭から出す", async () => {
+    await insertAt(1, 1000);
+
+    expect(await get("/?cursor=abc")).toContain("title-1");
+  });
+});
+
+describe("RSS の表示", () => {
+  it("新しい順に 20 件までの記事を、要約モデルとともに出す", async () => {
+    for (let i = 1; i <= 21; i++) await insertAt(i, i * 1000);
+
+    const xml = await get("/feed.xml");
+
+    const links = [...xml.matchAll(/<guid isPermaLink="true">([^<]+)</g)].map(
+      ([, link]) => link,
+    );
+    expect(links).toHaveLength(20);
+    expect(links[0]).toBe(`https://${env.WORKERS_DOMAIN}/items/21`);
+    expect(links.at(-1)).toBe(`https://${env.WORKERS_DOMAIN}/items/2`);
+    expect(xml).toContain("要約モデル: m");
+    expect(xml).toContain("<pubDate>Thu, 01 Jan 1970 00:00:21 GMT</pubDate>");
+  });
+
+  it("記事がなくても channel だけの RSS を返す", async () => {
+    const xml = await get("/feed.xml");
+
+    expect(xml).toContain("<channel>");
+    expect(xml).not.toContain("<item>");
+  });
+});
