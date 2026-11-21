@@ -1,6 +1,6 @@
 import { PermanentError } from "@hn-feed/shared/errors";
-import type { ArticleInput } from "./article";
-import type { MissingArticleStatus, SummaryDoc } from "./summary";
+import type { ArticleInput, MissingArticleStatus } from "./article";
+import type { SummaryDoc } from "./summary";
 import {
   ALLOWED_TAGS,
   stripUnsourcedSummaryLinks,
@@ -291,7 +291,10 @@ export async function parseSummaryResponse(
           asString(to.heading, `topics[${i}].heading`),
           `topics[${i}].heading`,
         ),
-        bodyHtml: asString(to.bodyHtml, `topics[${i}].bodyHtml`),
+        bodyHtml: requireNonEmpty(
+          asString(to.bodyHtml, `topics[${i}].bodyHtml`),
+          `topics[${i}].bodyHtml`,
+        ),
       };
     }),
   };
