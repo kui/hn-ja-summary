@@ -285,6 +285,26 @@ describe("generateSummary のリンクの照合", () => {
     );
   });
 
+  it("本文が無いときにスキーマにない articleHtml が返ったら、捨てて警告を出す", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(geminiOk());
+
+    const result = await generateSummary(
+      "test-key",
+      1,
+      "Title",
+      "https://example.com/post",
+      { status: "fetch_skipped" },
+      ["[alice]: comment"],
+    );
+
+    expect(result.doc.article).toEqual({ status: "fetch_skipped" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      "ignored articleHtml outside the response schema: item=1 article=fetch_skipped",
+    );
+  });
+
   it("許可外の属性を持つリンクは、照合で外す前の検証で SummaryFormatError にする", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       geminiOk({
@@ -300,11 +320,11 @@ describe("generateSummary のリンクの照合", () => {
 });
 
 describe("parseSummaryResponse", () => {
-  const parse = (o: unknown) =>
-    parseSummaryResponse(JSON.stringify(o), "ok", 1);
+  const parse = async (o: unknown) =>
+    (await parseSummaryResponse(JSON.stringify(o), "ok")).doc;
 
-  it("正常なJSONを要約文書に変換する", () => {
-    expect(parse(VALID_DOC)).toEqual({
+  it("正常なJSONを要約文書に変換する", async () => {
+    expect(await parse(VALID_DOC)).toEqual({
       jaTitle: VALID_DOC.jaTitle,
       article: { status: "ok", html: VALID_DOC.articleHtml },
       hnOverviewHtml: VALID_DOC.hnOverviewHtml,
@@ -312,86 +332,93 @@ describe("parseSummaryResponse", () => {
     });
   });
 
-  it("topics が空でも通す", () => {
-    expect(parse({ ...VALID_DOC, topics: [] }).topics).toEqual([]);
+  it("topics が空でも通す", async () => {
+    expect((await parse({ ...VALID_DOC, topics: [] })).topics).toEqual([]);
   });
 
-  it("不正なJSONを拒否する", () => {
-    expect(() => parseSummaryResponse("{", "ok", 1)).toThrow(
+  it("不正なJSONを拒否する", async () => {
+    await expect(parseSummaryResponse("{", "ok")).rejects.toThrow(
       SummaryFormatError,
     );
   });
 
-  it("配列やnullを拒否する", () => {
-    expect(() => parseSummaryResponse("null", "ok", 1)).toThrow(
+  it("配列やnullを拒否する", async () => {
+    await expect(parseSummaryResponse("null", "ok")).rejects.toThrow(
       SummaryFormatError,
     );
-    expect(() => parseSummaryResponse("[]", "ok", 1)).toThrow(
-      SummaryFormatError,
-    );
-  });
-
-  it("フィールド欠落を拒否する", () => {
-    expect(() => parse({ jaTitle: "x", topics: [] })).toThrow(
+    await expect(parseSummaryResponse("[]", "ok")).rejects.toThrow(
       SummaryFormatError,
     );
   });
 
-  it("本文があるのに articleHtml が無ければ拒否する", () => {
-    expect(() => parse({ ...VALID_DOC, articleHtml: undefined })).toThrow(
+  it("フィールド欠落を拒否する", async () => {
+    await expect(parse({ jaTitle: "x", topics: [] })).rejects.toThrow(
       SummaryFormatError,
     );
   });
 
-  it("本文が無いときは articleHtml を読まず、理由だけを持たせる", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const doc = parseSummaryResponse(
+  it("本文があるのに articleHtml が無ければ拒否する", async () => {
+    await expect(
+      parse({ ...VALID_DOC, articleHtml: undefined }),
+    ).rejects.toThrow(SummaryFormatError);
+  });
+
+  it("本文が無いときは articleHtml を読まず、理由だけを持たせる", async () => {
+    const result = await parseSummaryResponse(
       JSON.stringify({ ...VALID_DOC, articleHtml: undefined }),
       "fetch_skipped",
-      1,
     );
-    expect(doc.article).toEqual({ status: "fetch_skipped" });
-    expect(warn).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      doc: { article: { status: "fetch_skipped" } },
+      ignoredArticleHtml: false,
+    });
   });
 
   it.each([123, " ", "<script>x</script>"])(
-    "本文が無いときにスキーマにない articleHtml（%j）が返ったら、検証せずに捨てて警告を出す",
-    (articleHtml) => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const doc = parseSummaryResponse(
+    "本文が無いときにスキーマにない articleHtml（%j）が返ったら、検証せずに捨てたことを返す",
+    async (articleHtml) => {
+      const result = await parseSummaryResponse(
         JSON.stringify({ ...VALID_DOC, articleHtml }),
         "fetch_skipped",
-        1,
       );
-      expect(doc.article).toEqual({ status: "fetch_skipped" });
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn.mock.calls[0]?.[0]).toContain(
-        "ignored articleHtml outside the response schema: item=1 article=fetch_skipped",
-      );
+      expect(result).toMatchObject({
+        doc: { article: { status: "fetch_skipped" } },
+        ignoredArticleHtml: true,
+      });
     },
   );
 
-  it("空の articleHtml は拒否する", () => {
-    expect(() => parse({ ...VALID_DOC, articleHtml: " " })).toThrow(
+  it("HTML 断片に許可外の属性があれば拒否する", async () => {
+    await expect(
+      parse({
+        ...VALID_DOC,
+        hnOverviewHtml:
+          '<p><a href="https://example.com/" onclick="x">x</a></p>',
+      }),
+    ).rejects.toThrow(SummaryFormatError);
+  });
+
+  it("空の articleHtml は拒否する", async () => {
+    await expect(parse({ ...VALID_DOC, articleHtml: " " })).rejects.toThrow(
       SummaryFormatError,
     );
   });
 
-  it("topics が配列でない場合を拒否する", () => {
-    expect(() => parse({ ...VALID_DOC, topics: "not array" })).toThrow(
+  it("topics が配列でない場合を拒否する", async () => {
+    await expect(parse({ ...VALID_DOC, topics: "not array" })).rejects.toThrow(
       SummaryFormatError,
     );
   });
 
-  it("空の jaTitle を拒否する", () => {
-    expect(() => parse({ ...VALID_DOC, jaTitle: " " })).toThrow(
+  it("空の jaTitle を拒否する", async () => {
+    await expect(parse({ ...VALID_DOC, jaTitle: " " })).rejects.toThrow(
       SummaryFormatError,
     );
   });
 
-  it("空の topic heading を拒否する", () => {
-    expect(() =>
+  it("空の topic heading を拒否する", async () => {
+    await expect(
       parse({ ...VALID_DOC, topics: [{ heading: "", bodyHtml: "<p>x</p>" }] }),
-    ).toThrow(SummaryFormatError);
+    ).rejects.toThrow(SummaryFormatError);
   });
 });

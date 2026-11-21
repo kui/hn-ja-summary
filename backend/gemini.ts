@@ -205,9 +205,16 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
     );
   }
   const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
-  const parsed = parseSummaryResponse(text.trim(), article.status, itemId);
-  // 検証はモデルの出力そのものに対して行う。リンクを外すと HTML が書き換わり、許可外の属性もリンクごと消えるため
-  await validateSummaryDoc(parsed);
+  const { doc: parsed, ignoredArticleHtml } = await parseSummaryResponse(
+    text.trim(),
+    article.status,
+  );
+  // 捨てるだけだと、モデルがスキーマを守っていないことに気付けない
+  if (ignoredArticleHtml) {
+    console.warn(
+      `  [gemini] ignored articleHtml outside the response schema: item=${itemId} article=${article.status}`,
+    );
+  }
   // モデルが「投稿に含まれていないURLをリンクすることは厳禁」の指示を守らなかった分は、
   // 作り直さずにリンクだけ外す（作り直すと Flex のリクエストが増えるため）。
   // 照合先はモデルに渡したプロンプトそのもの。
@@ -239,12 +246,12 @@ function asString(v: unknown, field: string): string {
   return v;
 }
 
-// 本文が無いときは articleHtml をレスポンススキーマから外しているので読まず、本文が無い理由だけを持たせる
-export function parseSummaryResponse(
+// 本文が無いときは articleHtml をレスポンススキーマから外しているので読まず、本文が無い理由だけを持たせる。
+// HTML 断片の検証は、リンクを外す前のモデル出力そのものに対して行う。外したあとだと、許可外の属性もリンクごと消えて見逃す
+export async function parseSummaryResponse(
   text: string,
   articleStatus: ArticleInput["status"],
-  itemId: number,
-): SummaryDoc {
+): Promise<{ doc: SummaryDoc; ignoredArticleHtml: boolean }> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -258,13 +265,7 @@ export function parseSummaryResponse(
   if (!Array.isArray(o.topics)) {
     throw new SummaryFormatError("topics is not an array");
   }
-  // 捨てるだけだと、モデルがスキーマを守っていないことに気付けない
-  if (articleStatus !== "ok" && o.articleHtml !== undefined) {
-    console.warn(
-      `  [gemini] ignored articleHtml outside the response schema: item=${itemId} article=${articleStatus}`,
-    );
-  }
-  return {
+  const doc: SummaryDoc = {
     jaTitle: requireNonEmpty(asString(o.jaTitle, "jaTitle"), "jaTitle"),
     article:
       articleStatus === "ok"
@@ -293,6 +294,11 @@ export function parseSummaryResponse(
         bodyHtml: asString(to.bodyHtml, `topics[${i}].bodyHtml`),
       };
     }),
+  };
+  await validateSummaryDoc(doc);
+  return {
+    doc,
+    ignoredArticleHtml: articleStatus !== "ok" && o.articleHtml !== undefined,
   };
 }
 
