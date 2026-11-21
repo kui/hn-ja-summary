@@ -180,6 +180,11 @@ async function stripUnsourcedLinks(
         if (url !== null && allowed.has(url)) return;
         removed.push({ field, href });
         el.removeAndKeepContent();
+        // 閉じられていない <a> には親の閉じタグ（<p><a>x</p> の </p>）が終了タグとして渡され、
+        // removeAndKeepContent がそれも消すので、出し直す
+        el.onEndTag((end) => {
+          if (end.name !== "a") end.after(`</${end.name}>`, { html: true });
+        });
       },
     })
     .transform(new Response(html))

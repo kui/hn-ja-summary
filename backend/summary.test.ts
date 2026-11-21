@@ -245,6 +245,24 @@ describe("stripUnsourcedSummaryLinks", () => {
   });
 
   it.each([
+    ['<p><a href="https://evil.test/">x</p>', "<p>x</p>"],
+    [
+      '<p><strong><a href="https://evil.test/">x</strong></p>',
+      "<p><strong>x</strong></p>",
+    ],
+  ])(
+    "閉じられていない a タグを外しても親の閉じタグは残す: %s",
+    async (html, expected) => {
+      const result = await strip(html, "https://example.com/");
+      expect(result).toEqual({
+        html: expected,
+        removed: ["https://evil.test/"],
+      });
+      await expect(validateFragment(result.html)).resolves.toBeUndefined();
+    },
+  );
+
+  it.each([
     ["別のドメインになる前方一致", "https://example.co"],
     ["途中で切った URL", "https://github.com/foo"],
     ["スキームだけ", "https://"],
