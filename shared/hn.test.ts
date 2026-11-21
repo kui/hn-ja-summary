@@ -334,24 +334,35 @@ describe("fetchHNItemWithComments", () => {
     };
   }
 
-  function mockAlgolia(
-    children: AlgoliaComment[] | null,
-    search: () => Response | Promise<Response>,
-  ) {
-    return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.includes("/search_by_date")) return search();
-      return Response.json({
-        id: STORY_ID,
-        title: "story",
-        url: null,
-        text: null,
-        author: "alice",
-        points: 1,
-        created_at: "",
-        children,
-      });
+  function storyResponse(children: AlgoliaComment[] | null): Response {
+    return Response.json({
+      id: STORY_ID,
+      title: "story",
+      url: null,
+      text: null,
+      author: "alice",
+      points: 1,
+      created_at: "",
+      children,
     });
+  }
+
+  type MockResponse = () => Response | Promise<Response>;
+
+  // story に children を渡すと、そのコメントを持つストーリーを返す
+  function mockAlgolia(
+    story: AlgoliaComment[] | null | MockResponse,
+    search: MockResponse,
+  ) {
+    const storyFn =
+      typeof story === "function" ? story : () => storyResponse(story);
+    return vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) =>
+        String(input).includes("/search_by_date")
+          ? Promise.resolve(search())
+          : Promise.resolve(storyFn()),
+      );
   }
 
   it("このストーリーのコメントを 1 リクエストで検索する", async () => {
@@ -469,8 +480,9 @@ describe("fetchHNItemWithComments", () => {
   it.each([429, 500, 503])(
     "ストーリーの取得が %i なら再試行に回すため例外を投げる",
     async (status) => {
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response("error", { status }),
+      mockAlgolia(
+        () => new Response("error", { status }),
+        () => Response.json({ hits: [] }),
       );
       await expect(fetchHNItemWithComments(STORY_ID)).rejects.toThrow(
         String(status),
@@ -522,46 +534,30 @@ describe("fetchHNItemWithComments", () => {
 
   it("ストーリーの取得を待たずに検索を始める", async () => {
     let resolveItem!: (resp: Response) => void;
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation((input) =>
-        String(input).includes("/search_by_date")
-          ? Promise.resolve(Response.json({ hits: [hit(2, STORY_ID)] }))
-          : new Promise((resolve) => (resolveItem = resolve)),
-      );
+    const fetchMock = mockAlgolia(
+      () => new Promise((resolve) => (resolveItem = resolve)),
+      () => Response.json({ hits: [hit(2, STORY_ID)] }),
+    );
     const pending = fetchHNItemWithComments(STORY_ID);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    resolveItem(
-      Response.json({
-        id: STORY_ID,
-        title: "story",
-        url: null,
-        text: null,
-        author: "alice",
-        points: 1,
-        created_at: "",
-        children: [],
-      }),
-    );
+    resolveItem(storyResponse([]));
     const item = await pending;
     expect(item!.children!.map((c) => c.id)).toEqual([2]);
   });
 
   it("ストーリーが 404 なら検索結果があっても null を返す", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-      String(input).includes("/search_by_date")
-        ? Response.json({ hits: [hit(2, STORY_ID)] })
-        : new Response("not found", { status: 404 }),
+    mockAlgolia(
+      () => new Response("not found", { status: 404 }),
+      () => Response.json({ hits: [hit(2, STORY_ID)] }),
     );
     expect(await fetchHNItemWithComments(STORY_ID)).toBeNull();
   });
 
   it("ストーリーの取得が失敗したら検索が成功しても例外を投げる", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-      String(input).includes("/search_by_date")
-        ? Response.json({ hits: [hit(2, STORY_ID)] })
-        : new Response("error", { status: 503 }),
+    mockAlgolia(
+      () => new Response("error", { status: 503 }),
+      () => Response.json({ hits: [hit(2, STORY_ID)] }),
     );
     await expect(fetchHNItemWithComments(STORY_ID)).rejects.toThrow("503");
   });
