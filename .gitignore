@@ -5,5 +5,4 @@ worker-configuration.d.ts
 .wrangler
 *.tsbuildinfo
 .tsbuild/
-dist-types/
 /.claude

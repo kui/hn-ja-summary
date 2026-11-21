@@ -2,6 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "moduleResolution": "bundler",
+    "declarationDir": "./.tsbuild/types",
     "types": ["@cloudflare/workers-types"]
   },
   "exclude": ["./**/*.test.ts", "./vitest.config.ts"]
