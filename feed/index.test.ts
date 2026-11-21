@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { applyD1Migrations, env, type D1Migration } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
+import feed from "./index.ts";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -20,14 +21,17 @@ interface Row {
   summaryHtml: string;
 }
 
-async function insertItem(row: Row): Promise<void> {
+async function insertItem(
+  row: Row,
+  createdAt = 1_700_000_000_000,
+): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO feed_items (id, created_at_ms, title, article_url, hn_url, summary_html, model)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       row.id,
-      1_700_000_000_000,
+      createdAt,
       row.title,
       row.articleUrl,
       row.hnUrl,
@@ -95,6 +99,22 @@ beforeEach(async () => {
   await env.DB.prepare("DELETE FROM feed_items").run();
 });
 
+const SECTIONED = (jaTitle: string, article: string, hn: string): string =>
+  `<section id="article"><h2>${jaTitle}</h2>${article}</section><section id="hn">${hn}</section>`;
+
+async function insertAt(id: number, createdAt: number): Promise<void> {
+  await insertItem(
+    {
+      id,
+      title: `title-${id}`,
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: "<p>s</p>",
+    },
+    createdAt,
+  );
+}
+
 describe("記事ページ", () => {
   it("記事 URL と HN URL を属性値としてエスケープする", async () => {
     const hnUrl = `https://news.ycombinator.com/item?id=1" onmouseover="alert(1)`;
@@ -112,59 +132,7 @@ describe("記事ページ", () => {
     expect(hrefs.filter((h) => h === ATTR_ATTACK)).toHaveLength(2);
     expect(hrefs.filter((h) => h === hnUrl)).toHaveLength(2);
   });
-});
 
-describe("一覧ページ", () => {
-  it.each([
-    ["カーソルなし", "/"],
-    ["カーソルあり", "/?cursor=1700000000000"],
-  ])("%s でも記事を返す", async (_, path) => {
-    await insertItem({
-      id: 1,
-      title: "listed-title",
-      articleUrl: "https://example.com/",
-      hnUrl: "https://news.ycombinator.com/item?id=1",
-      summaryHtml: "<p>s</p>",
-    });
-
-    expect(await get(path)).toContain("listed-title");
-  });
-});
-
-describe("RSS", () => {
-  it("タイトルと description に ]]> が含まれても CDATA が壊れない", async () => {
-    const summaryHtml = `<p>x]]><injected/>y</p>`;
-    await insertItem({
-      id: 1,
-      title: CDATA_ATTACK,
-      articleUrl: "https://example.com/",
-      hnUrl: "https://news.ycombinator.com/item?id=1",
-      summaryHtml,
-    });
-
-    const xml = await get("/feed.xml");
-
-    // channel の title は CDATA ではないので item の title だけを見る
-    const item = xml.slice(xml.indexOf("<item>"));
-    expect(cdataText(item, "title")).toEqual([CDATA_ATTACK]);
-    const [description] = cdataText(item, "description");
-    expect(description.startsWith(summaryHtml)).toBe(true);
-  });
-});
-
-const SECTIONED = (jaTitle: string, article: string, hn: string): string =>
-  `<section id="article"><h2>${jaTitle}</h2>${article}</section><section id="hn">${hn}</section>`;
-
-async function insertAt(id: number, createdAt: number): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO feed_items (id, created_at_ms, title, article_url, hn_url, summary_html, model)
-     VALUES (?, ?, ?, 'https://example.com/', 'https://news.ycombinator.com/item?id=1', '<p>s</p>', 'm')`,
-  )
-    .bind(id, createdAt, `title-${id}`)
-    .run();
-}
-
-describe("記事ページの表示", () => {
   it("記録のない値は - で表示する", async () => {
     await insertItem({
       id: 1,
@@ -257,7 +225,6 @@ describe("記事ページの表示", () => {
       hnUrl: "https://news.ycombinator.com/item?id=1",
       summaryHtml: "<p>s</p>",
     });
-    const { default: feed } = await import("./index.ts");
 
     const res = await feed.fetch(
       new Request(`https://${env.WORKERS_DOMAIN}/items/1`),
@@ -268,7 +235,22 @@ describe("記事ページの表示", () => {
   });
 });
 
-describe("一覧ページの表示", () => {
+describe("一覧ページ", () => {
+  it.each([
+    ["カーソルなし", "/"],
+    ["カーソルあり", "/?cursor=1700000000000"],
+  ])("%s でも記事を返す", async (_, path) => {
+    await insertItem({
+      id: 1,
+      title: "listed-title",
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml: "<p>s</p>",
+    });
+
+    expect(await get(path)).toContain("listed-title");
+  });
+
   async function listed(summaryHtml: string): Promise<string> {
     await insertItem({
       id: 1,
@@ -372,7 +354,26 @@ describe("一覧ページの表示", () => {
   });
 });
 
-describe("RSS の表示", () => {
+describe("RSS", () => {
+  it("タイトルと description に ]]> が含まれても CDATA が壊れない", async () => {
+    const summaryHtml = `<p>x]]><injected/>y</p>`;
+    await insertItem({
+      id: 1,
+      title: CDATA_ATTACK,
+      articleUrl: "https://example.com/",
+      hnUrl: "https://news.ycombinator.com/item?id=1",
+      summaryHtml,
+    });
+
+    const xml = await get("/feed.xml");
+
+    // channel の title は CDATA ではないので item の title だけを見る
+    const item = xml.slice(xml.indexOf("<item>"));
+    expect(cdataText(item, "title")).toEqual([CDATA_ATTACK]);
+    const [description] = cdataText(item, "description");
+    expect(description.startsWith(summaryHtml)).toBe(true);
+  });
+
   it("新しい順に 20 件までの記事を、要約モデルとともに出す", async () => {
     for (let i = 1; i <= 21; i++) await insertAt(i, i * 1000);
 
@@ -384,7 +385,7 @@ describe("RSS の表示", () => {
     expect(links).toHaveLength(20);
     expect(links[0]).toBe(`https://${env.WORKERS_DOMAIN}/items/21`);
     expect(links.at(-1)).toBe(`https://${env.WORKERS_DOMAIN}/items/2`);
-    expect(xml).toContain("要約モデル: m");
+    expect(xml).toContain("要約モデル: gemini-test");
     expect(xml).toContain("<pubDate>Thu, 01 Jan 1970 00:00:21 GMT</pubDate>");
   });
 
