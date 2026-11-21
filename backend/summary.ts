@@ -81,7 +81,10 @@ export async function validateFragment(html: string): Promise<void> {
         if (VOID_TAGS.has(tag)) return;
         const entry: OpenElement = { tag, closed: false };
         opened.push(entry);
-        el.onEndTag(() => {
+        el.onEndTag((end) => {
+          // 閉じられていない <a> は親の閉じタグ（<p><a>x</p> の </p>）を終了タグとして受け取り、
+          // stripUnsourcedLinks の removeAndKeepContent がその閉じタグまで消すので、閉じていない扱いにする
+          if (tag === "a" && end.name !== "a") return;
           entry.closed = true;
         });
       },
@@ -96,12 +99,31 @@ export async function validateFragment(html: string): Promise<void> {
   }
 }
 
-export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
-  if (doc.article.status === "ok") await validateFragment(doc.article.html);
-  await validateFragment(doc.hnOverviewHtml);
-  for (const topic of doc.topics) {
-    await validateFragment(topic.bodyHtml);
+// 断片ごとに、出力の順に 1 つずつ fn を呼ぶ（前の呼び出しが終わるまで次を呼ばない）
+async function mapSummaryFragments(
+  doc: SummaryDoc,
+  fn: (html: string, field: string) => Promise<string>,
+): Promise<SummaryDoc> {
+  const article: ArticleSummary =
+    doc.article.status === "ok"
+      ? { ...doc.article, html: await fn(doc.article.html, "articleHtml") }
+      : doc.article;
+  const hnOverviewHtml = await fn(doc.hnOverviewHtml, "hnOverviewHtml");
+  const topics = [];
+  for (const [i, topic] of doc.topics.entries()) {
+    topics.push({
+      ...topic,
+      bodyHtml: await fn(topic.bodyHtml, `topics[${i}].bodyHtml`),
+    });
   }
+  return { ...doc, article, hnOverviewHtml, topics };
+}
+
+export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
+  await mapSummaryFragments(doc, async (html) => {
+    await validateFragment(html);
+    return html;
+  });
 }
 
 const INLINE_TAGS = new Set(["strong", "em", "code", "sup", "sub", "a", "br"]);
@@ -164,6 +186,8 @@ export interface RemovedLink {
   href: string | null;
 }
 
+// 渡される断片は validateFragment を通っているので、<a> の終了タグは必ずその <a> 自身の </a> になり、
+// removeAndKeepContent で親の閉じタグが消えることはない
 async function stripUnsourcedLinks(
   html: string,
   field: string,
@@ -197,22 +221,11 @@ export async function stripUnsourcedSummaryLinks(
 ): Promise<{ doc: SummaryDoc; removed: RemovedLink[] }> {
   const allowed = sourceUrls(source);
   const removed: RemovedLink[] = [];
-  const strip = (html: string, field: string) =>
-    stripUnsourcedLinks(html, field, allowed, removed);
-  const article: ArticleSummary =
-    doc.article.status === "ok"
-      ? { ...doc.article, html: await strip(doc.article.html, "articleHtml") }
-      : doc.article;
-  const hnOverviewHtml = await strip(doc.hnOverviewHtml, "hnOverviewHtml");
-  // ログの順番を出力の順に揃えるため、並行させずに 1 つずつ処理する
-  const topics = [];
-  for (const [i, topic] of doc.topics.entries()) {
-    topics.push({
-      ...topic,
-      bodyHtml: await strip(topic.bodyHtml, `topics[${i}].bodyHtml`),
-    });
-  }
-  return { doc: { ...doc, article, hnOverviewHtml, topics }, removed };
+  // mapSummaryFragments が出力の順に 1 つずつ呼ぶので、removed も出力の順に並ぶ
+  const stripped = await mapSummaryFragments(doc, (html, field) =>
+    stripUnsourcedLinks(html, field, allowed, removed),
+  );
+  return { doc: stripped, removed };
 }
 
 // 一覧ページの概要は <p> から拾うが、モデルは地の文を <p> で囲まずに返すことがある。

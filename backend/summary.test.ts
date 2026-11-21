@@ -5,6 +5,7 @@ import {
   validateFragment,
   SummaryFormatError,
   stripUnsourcedSummaryLinks,
+  validateSummaryDoc,
 } from "./summary.ts";
 import type { SummaryDoc } from "./summary.ts";
 
@@ -201,6 +202,40 @@ describe("validateFragment", () => {
       validateFragment('<a href="https://example.com">x</a>'),
     ).resolves.toBeUndefined();
   });
+
+  it.each([
+    '<p><a href="https://x.test/">x</p>',
+    '<p><strong><a href="https://x.test/">x</strong></p>',
+    '<p><a href="https://x.test/">x<a href="https://y.test/">y</p>',
+    '<p><a href="https://x.test/">foo <a href="https://y.test/">bar</a></p>',
+  ])("親の閉じタグで閉じる a タグを拒否する: %s", async (html) => {
+    await expect(validateFragment(html)).rejects.toThrow("unclosed tag: <a>");
+  });
+});
+
+describe("validateSummaryDoc", () => {
+  const BAD = "<p>閉じていない";
+
+  it.each([
+    ["article", { article: { status: "ok", html: BAD } }],
+    ["hnOverviewHtml", { hnOverviewHtml: BAD }],
+    ["topics", { topics: [{ heading: "h", bodyHtml: BAD }] }],
+  ] satisfies [string, Partial<SummaryDoc>][])(
+    "%s の不正な断片で失敗する",
+    async (_, overrides) => {
+      await expect(validateSummaryDoc(makeDoc(overrides))).rejects.toThrow(
+        SummaryFormatError,
+      );
+    },
+  );
+
+  it("本文がないときは article を確かめない", async () => {
+    // 本文がない article は html を持たないが、確かめていれば失敗するよう不正な html を持たせる
+    const article = { status: "no_url", html: BAD } as never;
+    await expect(
+      validateSummaryDoc(makeDoc({ article })),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("stripUnsourcedSummaryLinks", () => {
@@ -242,6 +277,21 @@ describe("stripUnsourcedSummaryLinks", () => {
       html: "<p>no href</p>",
       removed: [null],
     });
+  });
+
+  const EVIL = 'href="https://evil.test/"';
+  const OK = 'href="https://ok.test/"';
+  it.each([
+    [
+      `<p><a ${OK}>foo <a ${EVIL}>bar</a> baz</a></p>`,
+      `<p><a ${OK}>foo bar baz</a></p>`,
+    ],
+    [`<p><a ${EVIL}><strong>x</a></strong></p>`, "<p><strong>x</strong></p>"],
+  ])("入れ子や交差した a タグを外す: %s", async (html, expected) => {
+    await expect(validateFragment(html)).resolves.toBeUndefined();
+    const result = await strip(html, "https://ok.test/");
+    expect(result).toEqual({ html: expected, removed: ["https://evil.test/"] });
+    await expect(validateFragment(result.html)).resolves.toBeUndefined();
   });
 
   it.each([
