@@ -250,11 +250,22 @@ describe("POST /enqueue", () => {
     it.each([
       ["空文字", ""],
       ["空白だけ", "   "],
-    ])("%s は ID の入力を求める", async (_, input) => {
-      const res = await postEnqueue(input);
+    ])(
+      "%s は ID の入力を求め、キューにも D1 にも触れない",
+      async (_, input) => {
+        const send = vi.spyOn(env.QUEUE, "send");
 
-      expect(await res.text()).toContain("ID を入力してください");
-    });
+        const res = await postEnqueue(input);
+
+        expect(await res.text()).toContain("ID を入力してください");
+        expect(send).not.toHaveBeenCalled();
+        expect(
+          await env.DB.prepare(
+            "SELECT COUNT(*) AS n FROM processed_items",
+          ).first("n"),
+        ).toBe(0);
+      },
+    );
   });
 
   it("同じオリジンからの POST はキューに追加する", async () => {

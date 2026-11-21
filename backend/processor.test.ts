@@ -87,12 +87,11 @@ async function itemState(): Promise<string | null> {
     .first<string>("state");
 }
 
-async function storedArticle(): Promise<{
-  article_url: string;
-  article_fetch_method: string;
-} | null> {
+async function storedRow(): Promise<Record<string, unknown> | null> {
   return env.DB.prepare(
-    "SELECT article_url, article_fetch_method FROM feed_items WHERE id = ?",
+    `SELECT title, article_url, article_fetch_method, article_chars, comment_count,
+            points, comments_used, hn_posted_at_ms
+     FROM feed_items WHERE id = ?`,
   )
     .bind(ITEM_ID)
     .first();
@@ -269,7 +268,7 @@ describe("queue", () => {
       expect(fetch.mock.calls.map(([input]) => String(input))).toContain(
         articleUrl,
       );
-      expect((await storedArticle())?.article_url).toBe(articleUrl);
+      expect((await storedRow())?.article_url).toBe(articleUrl);
     },
   );
 
@@ -296,7 +295,7 @@ describe("queue", () => {
         ),
       ).toEqual([]);
       // 投稿の本文だけで要約する
-      expect(await storedArticle()).toEqual({
+      expect(await storedRow()).toMatchObject({
         article_url: `https://news.ycombinator.com/item?id=${ITEM_ID}`,
         article_fetch_method: "post_text",
       });
@@ -316,17 +315,8 @@ describe("queue", () => {
   });
 });
 
-const ARTICLE_HTML = `<html><body><article><p>${"記事の本文です。".repeat(30)}</p></article></body></html>`;
-
-async function storedRow(): Promise<Record<string, unknown> | null> {
-  return env.DB.prepare(
-    `SELECT title, article_url, article_fetch_method, article_chars, comment_count,
-            points, comments_used, hn_posted_at_ms
-     FROM feed_items WHERE id = ?`,
-  )
-    .bind(ITEM_ID)
-    .first();
-}
+const ARTICLE_TEXT = "記事の本文です。".repeat(30);
+const ARTICLE_HTML = `<html><body><article><p>${ARTICLE_TEXT}</p></article></body></html>`;
 
 describe("queue の入力の分岐", () => {
   beforeEach(() => {
@@ -477,10 +467,13 @@ describe("queue の入力の分岐", () => {
 
       await runQueue(1);
 
-      const row = await storedRow();
-      expect(row?.article_fetch_method).toBe("raw+post_text");
-      // 投稿の本文（post body）だけの長さより長い
-      expect(row?.article_chars).toBeGreaterThan("post body".length);
+      expect(await storedRow()).toMatchObject({
+        article_fetch_method: "raw+post_text",
+        article_chars: `post body
+
+[リンク先の内容]
+${ARTICLE_TEXT}`.length,
+      });
     });
 
     it("元記事を取得できなければ、投稿の本文だけで要約する", async () => {
