@@ -283,6 +283,8 @@ describe("stripUnsourcedSummaryLinks", () => {
       `<p><a ${OK}>foo bar</a></p>`,
       1,
     ],
+    // 残す <a> と外す <a> が同じ </p> を受け取り、外す <a> の onEndTag があとに呼ばれる
+    [`<p><a ${EVIL}>x<a ${OK}>y</p>`, `<p>x<a ${OK}>y</a></p>`, 1],
   ])(
     "閉じられていない a タグがあっても閉じタグの数を保つ: %s",
     async (html, expected, removedCount) => {

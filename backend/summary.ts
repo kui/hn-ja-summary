@@ -183,15 +183,35 @@ export interface RemovedLink {
   href: string | null;
 }
 
+// 閉じられていない <a> には、親の閉じタグ（<p><a>x</p> の </p>）が終了タグとして渡される。
+// 同じ閉じタグを受け取った要素の onEndTag は内側から順に呼ばれ、外す <a> が閉じタグを消すと、
+// それより前の呼び出しが閉じタグの前後に足した内容も消える。そこで <a> の側では残す <a> に
+// 補う </a> を貯めるだけにし、最後に呼ばれる閉じタグの持ち主がまとめて出し直す。
 async function stripUnsourcedLinks(
   html: string,
   field: string,
   allowed: Set<string>,
   removed: RemovedLink[],
 ): Promise<string> {
+  let pendingClose = "";
+  let endTagRemoved = false;
   return new HTMLRewriter()
-    .on("a", {
+    .on("*", {
       element(el) {
+        const tag = el.tagName.toLowerCase();
+        if (tag !== "a") {
+          if (!ALLOWED_TAGS.has(tag) || VOID_TAGS.has(tag)) return;
+          el.onEndTag((end) => {
+            if (end.name !== tag || (pendingClose === "" && !endTagRemoved)) {
+              return;
+            }
+            end.remove();
+            end.after(`${pendingClose}</${tag}>`, { html: true });
+            pendingClose = "";
+            endTagRemoved = false;
+          });
+          return;
+        }
         // getAttribute はエンティティをデコードしない
         const raw = el.getAttribute("href");
         const href = raw === null ? null : decodeHtmlEntities(raw);
@@ -201,13 +221,10 @@ async function stripUnsourcedLinks(
           removed.push({ field, href });
           el.removeAndKeepContent();
         }
-        // 閉じられていない <a> には親の閉じタグ（<p><a>x</p> の </p>）が終了タグとして渡される。
-        // 外す <a> では removeAndKeepContent がそれも消すので出し直す。残す <a> の中で外す <a> が
-        // </a> を受け取ると、残す <a> の閉じタグがなくなるので補う。
         el.onEndTag((end) => {
           if (end.name === "a") return;
-          if (keep) end.before("</a>", { html: true });
-          else end.after(`</${end.name}>`, { html: true });
+          if (keep) pendingClose += "</a>";
+          else endTagRemoved = true;
         });
       },
     })
