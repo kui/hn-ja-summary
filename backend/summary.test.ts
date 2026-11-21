@@ -5,6 +5,7 @@ import {
   validateFragment,
   SummaryFormatError,
   stripUnsourcedSummaryLinks,
+  validateSummaryDoc,
 } from "./summary.ts";
 import type { SummaryDoc } from "./summary.ts";
 
@@ -199,6 +200,29 @@ describe("validateFragment", () => {
   it("https の href は通す", async () => {
     await expect(
       validateFragment('<a href="https://example.com">x</a>'),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("validateSummaryDoc", () => {
+  const BAD = "<p>閉じていない";
+
+  it.each([
+    ["article", { article: { status: "ok", html: BAD } }],
+    ["hnOverviewHtml", { hnOverviewHtml: BAD }],
+    ["topics", { topics: [{ heading: "h", bodyHtml: BAD }] }],
+  ] satisfies [string, Partial<SummaryDoc>][])(
+    "%s の不正な断片で失敗する",
+    async (_, overrides) => {
+      await expect(validateSummaryDoc(makeDoc(overrides))).rejects.toThrow(
+        SummaryFormatError,
+      );
+    },
+  );
+
+  it("本文がないときは article を確かめない", async () => {
+    await expect(
+      validateSummaryDoc(makeDoc({ article: { status: "no_url" } })),
     ).resolves.toBeUndefined();
   });
 });

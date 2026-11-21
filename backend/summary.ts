@@ -96,12 +96,31 @@ export async function validateFragment(html: string): Promise<void> {
   }
 }
 
-export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
-  if (doc.article.status === "ok") await validateFragment(doc.article.html);
-  await validateFragment(doc.hnOverviewHtml);
-  for (const topic of doc.topics) {
-    await validateFragment(topic.bodyHtml);
+// fn が残すログの順番を出力の順に揃えるため、並行させずに 1 つずつ処理する
+async function mapSummaryFragments(
+  doc: SummaryDoc,
+  fn: (html: string, field: string) => Promise<string>,
+): Promise<SummaryDoc> {
+  const article: ArticleSummary =
+    doc.article.status === "ok"
+      ? { ...doc.article, html: await fn(doc.article.html, "articleHtml") }
+      : doc.article;
+  const hnOverviewHtml = await fn(doc.hnOverviewHtml, "hnOverviewHtml");
+  const topics = [];
+  for (const [i, topic] of doc.topics.entries()) {
+    topics.push({
+      ...topic,
+      bodyHtml: await fn(topic.bodyHtml, `topics[${i}].bodyHtml`),
+    });
   }
+  return { ...doc, article, hnOverviewHtml, topics };
+}
+
+export async function validateSummaryDoc(doc: SummaryDoc): Promise<void> {
+  await mapSummaryFragments(doc, async (html) => {
+    await validateFragment(html);
+    return html;
+  });
 }
 
 const INLINE_TAGS = new Set(["strong", "em", "code", "sup", "sub", "a", "br"]);
@@ -202,22 +221,10 @@ export async function stripUnsourcedSummaryLinks(
 ): Promise<{ doc: SummaryDoc; removed: RemovedLink[] }> {
   const allowed = sourceUrls(source);
   const removed: RemovedLink[] = [];
-  const strip = (html: string, field: string) =>
-    stripUnsourcedLinks(html, field, allowed, removed);
-  const article: ArticleSummary =
-    doc.article.status === "ok"
-      ? { ...doc.article, html: await strip(doc.article.html, "articleHtml") }
-      : doc.article;
-  const hnOverviewHtml = await strip(doc.hnOverviewHtml, "hnOverviewHtml");
-  // ログの順番を出力の順に揃えるため、並行させずに 1 つずつ処理する
-  const topics = [];
-  for (const [i, topic] of doc.topics.entries()) {
-    topics.push({
-      ...topic,
-      bodyHtml: await strip(topic.bodyHtml, `topics[${i}].bodyHtml`),
-    });
-  }
-  return { doc: { ...doc, article, hnOverviewHtml, topics }, removed };
+  const stripped = await mapSummaryFragments(doc, (html, field) =>
+    stripUnsourcedLinks(html, field, allowed, removed),
+  );
+  return { doc: stripped, removed };
 }
 
 // 一覧ページの概要は <p> から拾うが、モデルは地の文を <p> で囲まずに返すことがある。
