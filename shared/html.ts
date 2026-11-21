@@ -13,17 +13,46 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// HTML5 の名前付き文字参照は 2,000 以上あるが、記事の本文に実際に現れるのは
+// 記号や引用符のごく一部なので、それだけを持つ
 const HTML_ENTITIES: Record<string, string> = {
   amp: "&",
   lt: "<",
   gt: ">",
   quot: '"',
   apos: "'",
+  nbsp: " ",
+  hellip: "…",
+  middot: "·",
+  bull: "•",
+  times: "×",
+  divide: "÷",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+  laquo: "«",
+  raquo: "»",
+  lsquo: "‘",
+  rsquo: "’",
+  ldquo: "“",
+  rdquo: "”",
+  ndash: "–",
+  mdash: "—",
+  larr: "←",
+  rarr: "→",
+  deg: "°",
+  plusmn: "±",
+  sect: "§",
+  para: "¶",
+  euro: "€",
+  pound: "£",
+  yen: "¥",
+  cent: "¢",
 };
 
 export function decodeHtmlEntities(s: string): string {
   return s.replace(
-    /&(?:(amp|lt|gt|quot|apos)|#(\d+)|#x([0-9a-f]+));/gi,
+    /&(?:([a-z][a-z0-9]*)|#(\d+)|#x([0-9a-f]+));/gi,
     (
       m,
       name: string | undefined,
@@ -32,7 +61,10 @@ export function decodeHtmlEntities(s: string): string {
     ) => {
       if (name !== undefined) return HTML_ENTITIES[name.toLowerCase()] ?? m;
       const code = dec !== undefined ? Number(dec) : parseInt(hex ?? "", 16);
-      return code <= 0x10ffff ? String.fromCodePoint(code) : m;
+      // HTML の仕様と同じく、NUL・サロゲート・範囲外は U+FFFD にする
+      const invalid =
+        code === 0 || (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff;
+      return invalid ? "�" : String.fromCodePoint(code);
     },
   );
 }
