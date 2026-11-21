@@ -202,6 +202,15 @@ describe("validateFragment", () => {
       validateFragment('<a href="https://example.com">x</a>'),
     ).resolves.toBeUndefined();
   });
+
+  it.each([
+    '<p><a href="https://x.test/">x</p>',
+    '<p><strong><a href="https://x.test/">x</strong></p>',
+    '<p><a href="https://x.test/">x<a href="https://y.test/">y</p>',
+    '<p><a href="https://x.test/">foo <a href="https://y.test/">bar</a></p>',
+  ])("親の閉じタグで閉じる a タグを拒否する: %s", async (html) => {
+    await expect(validateFragment(html)).rejects.toThrow("unclosed tag: <a>");
+  });
 });
 
 describe("validateSummaryDoc", () => {
@@ -273,29 +282,17 @@ describe("stripUnsourcedSummaryLinks", () => {
   const EVIL = 'href="https://evil.test/"';
   const OK = 'href="https://ok.test/"';
   it.each([
-    [`<p><a ${EVIL}>x</p>`, "<p>x</p>", 1],
-    [`<p><strong><a ${EVIL}>x</strong></p>`, "<p><strong>x</strong></p>", 1],
-    // 閉じられていない <a> が 2 つあると、どちらにも同じ </p> が終了タグとして渡される
-    [`<p><a ${EVIL}>x<a ${EVIL}>y</p>`, "<p>xy</p>", 2],
-    // 外す <a> が </a> を受け取り、残す <a> には </p> が渡される
     [
-      `<p><a ${OK}>foo <a ${EVIL}>bar</a></p>`,
-      `<p><a ${OK}>foo bar</a></p>`,
-      1,
+      `<p><a ${OK}>foo <a ${EVIL}>bar</a> baz</a></p>`,
+      `<p><a ${OK}>foo bar baz</a></p>`,
     ],
-    // 残す <a> と外す <a> が同じ </p> を受け取り、外す <a> の onEndTag があとに呼ばれる
-    [`<p><a ${EVIL}>x<a ${OK}>y</p>`, `<p>x<a ${OK}>y</a></p>`, 1],
-  ])(
-    "閉じられていない a タグがあっても閉じタグの数を保つ: %s",
-    async (html, expected, removedCount) => {
-      const result = await strip(html, "https://ok.test/");
-      expect(result).toEqual({
-        html: expected,
-        removed: Array<string>(removedCount).fill("https://evil.test/"),
-      });
-      await expect(validateFragment(result.html)).resolves.toBeUndefined();
-    },
-  );
+    [`<p><a ${EVIL}><strong>x</a></strong></p>`, "<p><strong>x</strong></p>"],
+  ])("入れ子や交差した a タグを外す: %s", async (html, expected) => {
+    await expect(validateFragment(html)).resolves.toBeUndefined();
+    const result = await strip(html, "https://ok.test/");
+    expect(result).toEqual({ html: expected, removed: ["https://evil.test/"] });
+    await expect(validateFragment(result.html)).resolves.toBeUndefined();
+  });
 
   it.each([
     ["別のドメインになる前方一致", "https://example.co"],

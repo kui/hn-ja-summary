@@ -81,7 +81,10 @@ export async function validateFragment(html: string): Promise<void> {
         if (VOID_TAGS.has(tag)) return;
         const entry: OpenElement = { tag, closed: false };
         opened.push(entry);
-        el.onEndTag(() => {
+        el.onEndTag((end) => {
+          // 閉じられていない <a> は親の閉じタグ（<p><a>x</p> の </p>）を終了タグとして受け取り、
+          // stripUnsourcedLinks の removeAndKeepContent がその閉じタグまで消すので、閉じていない扱いにする
+          if (tag === "a" && end.name !== "a") return;
           entry.closed = true;
         });
       },
@@ -183,49 +186,24 @@ export interface RemovedLink {
   href: string | null;
 }
 
-// 閉じられていない <a> には、親の閉じタグ（<p><a>x</p> の </p>）が終了タグとして渡される。
-// 同じ閉じタグを受け取った要素の onEndTag は内側から順に呼ばれ、外す <a> が閉じタグを消すと、
-// それより前の呼び出しが閉じタグの前後に足した内容も消える。そこで <a> の側では残す <a> に
-// 補う </a> を貯めるだけにし、最後に呼ばれる閉じタグの持ち主がまとめて出し直す。
+// 渡される断片は validateFragment を通っているので、<a> の終了タグは必ずその <a> 自身の </a> になり、
+// removeAndKeepContent で親の閉じタグが消えることはない
 async function stripUnsourcedLinks(
   html: string,
   field: string,
   allowed: Set<string>,
   removed: RemovedLink[],
 ): Promise<string> {
-  let pendingClose = "";
-  let endTagRemoved = false;
   return new HTMLRewriter()
-    .on("*", {
+    .on("a", {
       element(el) {
-        const tag = el.tagName.toLowerCase();
-        if (tag !== "a") {
-          if (!ALLOWED_TAGS.has(tag) || VOID_TAGS.has(tag)) return;
-          el.onEndTag((end) => {
-            if (end.name !== tag || (pendingClose === "" && !endTagRemoved)) {
-              return;
-            }
-            end.remove();
-            end.after(`${pendingClose}</${tag}>`, { html: true });
-            pendingClose = "";
-            endTagRemoved = false;
-          });
-          return;
-        }
         // getAttribute はエンティティをデコードしない
         const raw = el.getAttribute("href");
         const href = raw === null ? null : decodeHtmlEntities(raw);
         const url = href === null ? null : normalizeUrl(href);
-        const keep = url !== null && allowed.has(url);
-        if (!keep) {
-          removed.push({ field, href });
-          el.removeAndKeepContent();
-        }
-        el.onEndTag((end) => {
-          if (end.name === "a") return;
-          if (keep) pendingClose += "</a>";
-          else endTagRemoved = true;
-        });
+        if (url !== null && allowed.has(url)) return;
+        removed.push({ field, href });
+        el.removeAndKeepContent();
       },
     })
     .transform(new Response(html))
