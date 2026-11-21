@@ -33,7 +33,6 @@ export type ArticleInput =
   | { status: "fetch_skipped" }
   | { status: "no_url" };
 
-// 本文が無い理由
 export type MissingArticleStatus = Exclude<ArticleInput["status"], "ok">;
 
 // fetchArticleContent の戻り値（取得方法を含む）
