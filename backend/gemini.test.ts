@@ -1,6 +1,11 @@
-import { SummaryFormatError } from "@hn-feed/shared/summary";
+import { SummaryFormatError } from "./summary.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GeminiRejectedError, generateSummary, MODEL } from "./gemini.ts";
+import {
+  GeminiRejectedError,
+  generateSummary,
+  MODEL,
+  parseSummaryResponse,
+} from "./gemini.ts";
 
 const VALID_DOC = {
   jaTitle: "日本語タイトル",
@@ -83,6 +88,13 @@ describe("generateSummary", () => {
       thinkingConfig: { thinkingLevel: "MINIMAL" },
       maxOutputTokens: 8192,
     });
+    // 許可タグの一覧は ALLOWED_TAGS の並びから作るので、プロンプトの文字列が変わっていないことを固定する
+    expect(
+      requestBody.generationConfig.responseSchema.properties.hnOverviewHtml
+        .description,
+    ).toContain(
+      "見出しタグは含めない。使用可能なタグは p, ul, ol, li, strong, em, code, sup, sub, a, table, thead, tbody, tr, th, td, br のみ。開いたタグは必ず閉じる。",
+    );
     // クライアント側の 12 分より前にサーバーが打ち切るよう、余裕を引いた秒数を送る
     expect(new Headers(init?.headers).get("X-Server-Timeout")).toBe("690");
     expect(timeout).toHaveBeenCalledExactlyOnceWith(12 * 60 * 1000);
@@ -260,16 +272,153 @@ describe("generateSummary のリンクの照合", () => {
       ["[alice]: see https://comment.test/ref"],
     );
 
-    expect(result.summaryHtml).toContain(
-      '<a href="https://example.com/post">元記事</a>',
+    expect(result.doc.article).toEqual({
+      status: "ok",
+      html: '<p><a href="https://example.com/post">元記事</a>と偽物</p>',
+    });
+    expect(result.doc.hnOverviewHtml).toBe(
+      '<p><a href="https://comment.test/ref">参照</a></p>',
     );
-    expect(result.summaryHtml).toContain(
-      '<a href="https://comment.test/ref">参照</a>',
-    );
-    expect(result.summaryHtml).not.toContain("evil.test");
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain(
       'item=1 field=articleHtml href="https://evil.test/"',
     );
+  });
+
+  it("本文が無いときにスキーマにない articleHtml が返ったら、捨てて警告を出す", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(geminiOk());
+
+    const result = await generateSummary(
+      "test-key",
+      1,
+      "Title",
+      "https://example.com/post",
+      { status: "fetch_skipped" },
+      ["[alice]: comment"],
+    );
+
+    expect(result.doc.article).toEqual({ status: "fetch_skipped" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      "ignored articleHtml outside the response schema: item=1 article=fetch_skipped",
+    );
+  });
+
+  it("許可外の属性を持つリンクは、照合で外す前の検証で SummaryFormatError にする", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      geminiOk({
+        text: JSON.stringify({
+          ...VALID_DOC,
+          articleHtml: '<p><a href="https://evil.test/" onclick="x">x</a></p>',
+        }),
+      }),
+    );
+
+    await expect(summarize()).rejects.toThrow(SummaryFormatError);
+  });
+});
+
+describe("parseSummaryResponse", () => {
+  const parse = async (o: unknown) =>
+    (await parseSummaryResponse(JSON.stringify(o), "ok")).doc;
+
+  it("正常なJSONを要約文書に変換する", async () => {
+    expect(await parse(VALID_DOC)).toEqual({
+      jaTitle: VALID_DOC.jaTitle,
+      article: { status: "ok", html: VALID_DOC.articleHtml },
+      hnOverviewHtml: VALID_DOC.hnOverviewHtml,
+      topics: VALID_DOC.topics,
+    });
+  });
+
+  it("topics が空でも通す", async () => {
+    expect((await parse({ ...VALID_DOC, topics: [] })).topics).toEqual([]);
+  });
+
+  it("不正なJSONを拒否する", async () => {
+    await expect(parseSummaryResponse("{", "ok")).rejects.toThrow(
+      SummaryFormatError,
+    );
+  });
+
+  it("配列やnullを拒否する", async () => {
+    await expect(parseSummaryResponse("null", "ok")).rejects.toThrow(
+      SummaryFormatError,
+    );
+    await expect(parseSummaryResponse("[]", "ok")).rejects.toThrow(
+      SummaryFormatError,
+    );
+  });
+
+  it("フィールド欠落を拒否する", async () => {
+    await expect(parse({ jaTitle: "x", topics: [] })).rejects.toThrow(
+      SummaryFormatError,
+    );
+  });
+
+  it("本文があるのに articleHtml が無ければ拒否する", async () => {
+    await expect(
+      parse({ ...VALID_DOC, articleHtml: undefined }),
+    ).rejects.toThrow(SummaryFormatError);
+  });
+
+  it("本文が無いときは articleHtml を読まず、理由だけを持たせる", async () => {
+    const result = await parseSummaryResponse(
+      JSON.stringify({ ...VALID_DOC, articleHtml: undefined }),
+      "fetch_skipped",
+    );
+    expect(result).toMatchObject({
+      doc: { article: { status: "fetch_skipped" } },
+      ignoredArticleHtml: false,
+    });
+  });
+
+  it.each([123, " ", "<script>x</script>"])(
+    "本文が無いときにスキーマにない articleHtml（%j）が返ったら、検証せずに捨てたことを返す",
+    async (articleHtml) => {
+      const result = await parseSummaryResponse(
+        JSON.stringify({ ...VALID_DOC, articleHtml }),
+        "fetch_skipped",
+      );
+      expect(result).toMatchObject({
+        doc: { article: { status: "fetch_skipped" } },
+        ignoredArticleHtml: true,
+      });
+    },
+  );
+
+  it("HTML 断片に許可外の属性があれば拒否する", async () => {
+    await expect(
+      parse({
+        ...VALID_DOC,
+        hnOverviewHtml:
+          '<p><a href="https://example.com/" onclick="x">x</a></p>',
+      }),
+    ).rejects.toThrow(SummaryFormatError);
+  });
+
+  it("空の articleHtml は拒否する", async () => {
+    await expect(parse({ ...VALID_DOC, articleHtml: " " })).rejects.toThrow(
+      SummaryFormatError,
+    );
+  });
+
+  it("topics が配列でない場合を拒否する", async () => {
+    await expect(parse({ ...VALID_DOC, topics: "not array" })).rejects.toThrow(
+      SummaryFormatError,
+    );
+  });
+
+  it("空の jaTitle を拒否する", async () => {
+    await expect(parse({ ...VALID_DOC, jaTitle: " " })).rejects.toThrow(
+      SummaryFormatError,
+    );
+  });
+
+  it("空の topic heading を拒否する", async () => {
+    await expect(
+      parse({ ...VALID_DOC, topics: [{ heading: "", bodyHtml: "<p>x</p>" }] }),
+    ).rejects.toThrow(SummaryFormatError);
   });
 });

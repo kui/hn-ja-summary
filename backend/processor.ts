@@ -16,6 +16,7 @@ import {
 import type { ArticleInput } from "./article";
 import { fetchArticleContent } from "./article";
 import { generateSummary, MODEL } from "./gemini";
+import { renderSummaryHtml } from "./summary";
 
 // 要約に含めるコメント最大数
 const MAX_COMMENTS = 100;
@@ -150,7 +151,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
   console.log(`Got ${comments.length} comments`);
 
   console.log("Generating summary with Gemini...");
-  const { summaryHtml, inputTokens, outputTokens, thoughtsTokens } =
+  const { doc, inputTokens, outputTokens, thoughtsTokens } =
     await generateSummary(
       env.GEMINI_API_KEY,
       itemId,
@@ -159,6 +160,7 @@ async function processItem(itemId: number, env: Env): Promise<void> {
       article,
       comments,
     );
+  const summaryHtml = renderSummaryHtml(doc, articleUrl, hnUrl);
 
   const now = Temporal.Now.instant().epochMilliseconds;
   const feedItem: FeedItem = {

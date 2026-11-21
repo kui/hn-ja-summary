@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseSummaryDoc,
   renderSummaryHtml,
   wrapLooseText,
   validateFragment,
@@ -15,75 +14,12 @@ const HN_URL = "https://news.ycombinator.com/item?id=1";
 function makeDoc(overrides: Partial<SummaryDoc> = {}): SummaryDoc {
   return {
     jaTitle: "日本語タイトル",
-    articleHtml: "<p>記事の要約。</p>",
+    article: { status: "ok", html: "<p>記事の要約。</p>" },
     hnOverviewHtml: "<p>議論の総括。</p>",
     topics: [{ heading: "観点1", bodyHtml: "<ul><li>要点</li></ul>" }],
     ...overrides,
   };
 }
-
-describe("parseSummaryDoc", () => {
-  it("正常なJSONをパースする", () => {
-    const input = makeDoc();
-    expect(parseSummaryDoc(JSON.stringify(input))).toEqual(input);
-  });
-
-  it("topics が空でも通す", () => {
-    const doc = parseSummaryDoc(JSON.stringify(makeDoc({ topics: [] })));
-    expect(doc.topics).toEqual([]);
-  });
-
-  it("不正なJSONを拒否する", () => {
-    expect(() => parseSummaryDoc("{")).toThrow(SummaryFormatError);
-  });
-
-  it("配列やnullを拒否する", () => {
-    expect(() => parseSummaryDoc("null")).toThrow(SummaryFormatError);
-    expect(() => parseSummaryDoc("[]")).toThrow(SummaryFormatError);
-  });
-
-  it("フィールド欠落を拒否する", () => {
-    expect(() =>
-      parseSummaryDoc(JSON.stringify({ jaTitle: "x", topics: [] })),
-    ).toThrow(SummaryFormatError);
-  });
-
-  it("articleHtml の欠落は許容する", () => {
-    // JSON.stringify は undefined のキーを落とす
-    const doc = parseSummaryDoc(
-      JSON.stringify({ ...makeDoc(), articleHtml: undefined }),
-    );
-    expect(doc.articleHtml).toBeUndefined();
-  });
-
-  it("空の articleHtml は拒否する", () => {
-    expect(() =>
-      parseSummaryDoc(JSON.stringify(makeDoc({ articleHtml: " " }))),
-    ).toThrow(SummaryFormatError);
-  });
-
-  it("topics が配列でない場合を拒否する", () => {
-    expect(() =>
-      parseSummaryDoc(JSON.stringify({ ...makeDoc(), topics: "not array" })),
-    ).toThrow(SummaryFormatError);
-  });
-
-  it("空の jaTitle を拒否する", () => {
-    expect(() =>
-      parseSummaryDoc(JSON.stringify(makeDoc({ jaTitle: " " }))),
-    ).toThrow(SummaryFormatError);
-  });
-
-  it("空の topic heading を拒否する", () => {
-    expect(() =>
-      parseSummaryDoc(
-        JSON.stringify(
-          makeDoc({ topics: [{ heading: "", bodyHtml: "<p>x</p>" }] }),
-        ),
-      ),
-    ).toThrow(SummaryFormatError);
-  });
-});
 
 describe("renderSummaryHtml", () => {
   it("section で囲んだHTMLを生成する", () => {
@@ -119,7 +55,7 @@ describe("renderSummaryHtml", () => {
   it("p で囲まれていない本文・総括・観点を p で包む", () => {
     const html = renderSummaryHtml(
       makeDoc({
-        articleHtml: "記事の要約。",
+        article: { status: "ok", html: "記事の要約。" },
         hnOverviewHtml: "議論の総括。",
         topics: [{ heading: "観点1", bodyHtml: "観点の説明。" }],
       }),
@@ -129,6 +65,17 @@ describe("renderSummaryHtml", () => {
     expect(html).toContain("<p>記事の要約。</p>");
     expect(html).toContain("<p>議論の総括。</p>");
     expect(html).toContain("<p>観点の説明。</p>");
+  });
+
+  it("本文が無いときは理由ごとの注記を出す", () => {
+    const html = renderSummaryHtml(
+      makeDoc({ article: { status: "fetch_failed" } }),
+      ARTICLE_URL,
+      HN_URL,
+    );
+    expect(html).toContain(
+      '<p class="notice">元記事の本文を取得できなかったため、以下はHNコメントのみに基づきます。</p>',
+    );
   });
 
   it("topics が空でも2つの section を返す", () => {
@@ -259,7 +206,12 @@ describe("validateFragment", () => {
 describe("stripUnsourcedSummaryLinks", () => {
   async function strip(html: string, source: string) {
     const { doc, removed } = await stripUnsourcedSummaryLinks(
-      { jaTitle: "t", articleHtml: "", hnOverviewHtml: html, topics: [] },
+      {
+        jaTitle: "t",
+        article: { status: "no_url" },
+        hnOverviewHtml: html,
+        topics: [],
+      },
       source,
     );
     return { html: doc.hnOverviewHtml, removed: removed.map((r) => r.href) };
@@ -453,7 +405,10 @@ describe("stripUnsourcedSummaryLinks", () => {
     const { doc, removed } = await stripUnsourcedSummaryLinks(
       {
         jaTitle: "t",
-        articleHtml: '<p><a href="https://a.test/">a</a></p>',
+        article: {
+          status: "ok",
+          html: '<p><a href="https://a.test/">a</a></p>',
+        },
         hnOverviewHtml: '<p><a href="https://b.test/">b</a></p>',
         topics: [
           { heading: "h1", bodyHtml: "<p>no link</p>" },
@@ -465,7 +420,7 @@ describe("stripUnsourcedSummaryLinks", () => {
       },
       "https://ok.test/",
     );
-    expect(doc.articleHtml).toBe("<p>a</p>");
+    expect(doc.article).toEqual({ status: "ok", html: "<p>a</p>" });
     expect(doc.hnOverviewHtml).toBe("<p>b</p>");
     expect(doc.topics[1]?.bodyHtml).toBe(
       '<p><a href="https://ok.test/">c</a></p>',
