@@ -416,6 +416,24 @@ describe("fetchArticleContent", () => {
     );
   });
 
+  it("raw は HTML を text/plain で返されても HTML として読む", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("https://example.com/")) {
+        return htmlResponse(
+          `
+<!DOCTYPE html><html><body><script>var x = 1;</script><p>${BODY}</p></body></html>`,
+          200,
+          "text/plain",
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await fetchArticle();
+
+    expect(result.status === "ok" && result.content).toBe(BODY);
+  });
+
   it.each([
     { name: "Shift_JIS", charset: "Shift_JIS", encoded: SJIS_BUNSHOU },
     { name: "EUC-JP", charset: "EUC-JP", encoded: EUCJP_BUNSHOU },
