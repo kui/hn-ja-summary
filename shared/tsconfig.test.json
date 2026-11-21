@@ -4,7 +4,8 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "types": ["node", "@cloudflare/workers-types"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "declarationDir": "./.tsbuild/test-types"
   },
   "include": ["./**/*.ts"]
 }
