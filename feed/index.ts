@@ -25,26 +25,33 @@ SELECT id, title,
 FROM feed_items
 `;
 
+// created_at_ms は同時に処理した記事で重なるので、id を足して順序を一意にする
 const FEED_SQL_DEFAULT = `
 ${SELECT_FEED_ITEMS}
-ORDER BY created_at_ms DESC
+ORDER BY created_at_ms DESC, id DESC
 LIMIT ?
 `;
 
+// カーソルはそのページの先頭の記事を指す
 const FEED_SQL_CURSOR = `
 ${SELECT_FEED_ITEMS}
-WHERE created_at_ms <= ?
-ORDER BY created_at_ms DESC
+WHERE (created_at_ms, id) <= (?, ?)
+ORDER BY created_at_ms DESC, id DESC
 LIMIT ?
 `;
 
 const PREV_CURSOR_SQL = `
-SELECT created_at_ms AS createdAt
+SELECT created_at_ms AS createdAt, id
 FROM feed_items
-WHERE created_at_ms > ?
-ORDER BY created_at_ms ASC
+WHERE (created_at_ms, id) > (?, ?)
+ORDER BY created_at_ms ASC, id ASC
 LIMIT ?
 `;
+
+interface Cursor {
+  createdAt: number;
+  id: number;
+}
 
 const ITEM_SQL = `
 ${SELECT_FEED_ITEMS}
@@ -91,19 +98,19 @@ export default {
 
 async function handleRoot(env: Env, url: URL): Promise<Response> {
   const FETCH = MAX_FEED_ITEMS + 1;
-  const cursorParam = url.searchParams.get("cursor");
-  const cursor = cursorParam ? parseInt(cursorParam, 10) : null;
-  const validCursor = cursor !== null && !isNaN(cursor);
+  const cursor = parseCursor(url.searchParams.get("cursor"));
 
   const [pageResult, prevResult] = await Promise.all([
-    validCursor
-      ? env.DB.prepare(FEED_SQL_CURSOR).bind(cursor, FETCH).all<FeedItem>()
+    cursor
+      ? env.DB.prepare(FEED_SQL_CURSOR)
+          .bind(cursor.createdAt, cursor.id, FETCH)
+          .all<FeedItem>()
       : env.DB.prepare(FEED_SQL_DEFAULT).bind(FETCH).all<FeedItem>(),
-    validCursor
+    cursor
       ? env.DB.prepare(PREV_CURSOR_SQL)
-          .bind(cursor, MAX_FEED_ITEMS)
-          .all<{ createdAt: number }>()
-      : Promise.resolve<{ results: { createdAt: number }[] }>({ results: [] }),
+          .bind(cursor.createdAt, cursor.id, MAX_FEED_ITEMS)
+          .all<Cursor>()
+      : Promise.resolve<{ results: Cursor[] }>({ results: [] }),
   ]);
 
   const raw = pageResult.results;
@@ -111,11 +118,9 @@ async function handleRoot(env: Env, url: URL): Promise<Response> {
   const items = raw.slice(0, MAX_FEED_ITEMS);
   const prevItems = prevResult.results;
 
-  const nextUrl = hasMore ? `/?cursor=${raw[MAX_FEED_ITEMS].createdAt}` : null;
+  const nextUrl = hasMore ? cursorUrl(raw[MAX_FEED_ITEMS]) : null;
   const prevUrl =
-    prevItems.length > 0
-      ? `/?cursor=${prevItems[prevItems.length - 1].createdAt}`
-      : null;
+    prevItems.length > 0 ? cursorUrl(prevItems[prevItems.length - 1]) : null;
 
   return new Response(renderIndexPage(items, prevUrl, nextUrl, url.href), {
     headers: {
@@ -123,6 +128,20 @@ async function handleRoot(env: Env, url: URL): Promise<Response> {
       "Cache-Control": "public, max-age=600",
     },
   });
+}
+
+function cursorUrl(c: Cursor): string {
+  return `/?cursor=${c.createdAt}-${c.id}`;
+}
+
+// id のない形は以前のカーソルで、その時刻の記事をすべて含めていたので、id を最大にして同じ範囲を出す
+function parseCursor(param: string | null): Cursor | null {
+  const m = param?.match(/^(\d+)(?:-(\d+))?$/);
+  if (!m) return null;
+  return {
+    createdAt: Number(m[1]),
+    id: m[2] === undefined ? Number.MAX_SAFE_INTEGER : Number(m[2]),
+  };
 }
 
 async function handleFeed(env: Env): Promise<Response> {
