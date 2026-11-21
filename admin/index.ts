@@ -34,20 +34,30 @@ function isStale(enqueuedAtMs: number | null): boolean {
   );
 }
 
+// HN の item ID は 1 以上の整数
+function parseDigits(text: string): number | null {
+  if (!/^[1-9][0-9]*$/.test(text)) return null;
+  const n = Number(text);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+// 管理画面は HN の item を投入するためのものなので、URL は HN 以外のホストを入力ミスとして拒否する
+const HN_HOSTNAME = "news.ycombinator.com";
+
 function parseItemId(input: string): number | null {
   const trimmed = input.trim();
-  const asNum = parseInt(trimmed, 10);
-  if (!isNaN(asNum) && String(asNum) === trimmed) return asNum;
+  const asNum = parseDigits(trimmed);
+  if (asNum !== null) return asNum;
 
   try {
     const url = new URL(trimmed);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (url.hostname !== HN_HOSTNAME) return null;
+    if (url.pathname !== "/item") return null;
     const idParam = url.searchParams.get("id");
-    if (idParam) {
-      const parsed = parseInt(idParam, 10);
-      if (!isNaN(parsed)) return parsed;
-    }
+    if (idParam !== null) return parseDigits(idParam);
   } catch {
-    // input is not a URL
+    // URL として解釈できない入力
   }
   return null;
 }
