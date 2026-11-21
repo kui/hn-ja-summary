@@ -205,7 +205,7 @@ HNコメント冒頭の [username] は返信関係を追うための識別子。
     );
   }
   const text = candidate.content?.parts?.map((p) => p.text).join("") ?? "";
-  const parsed = parseSummaryResponse(text.trim(), article.status);
+  const parsed = parseSummaryResponse(text.trim(), article.status, itemId);
   // 検証はモデルの出力そのものに対して行う。リンクを外すと HTML が書き換わり、許可外の属性もリンクごと消えるため
   await validateSummaryDoc(parsed);
   // モデルが「投稿に含まれていないURLをリンクすることは厳禁」の指示を守らなかった分は、
@@ -243,6 +243,7 @@ function asString(v: unknown, field: string): string {
 export function parseSummaryResponse(
   text: string,
   articleStatus: ArticleInput["status"],
+  itemId: number,
 ): SummaryDoc {
   let raw: unknown;
   try {
@@ -256,6 +257,12 @@ export function parseSummaryResponse(
   const o = raw as Record<string, unknown>;
   if (!Array.isArray(o.topics)) {
     throw new SummaryFormatError("topics is not an array");
+  }
+  // 捨てるだけだと、モデルがスキーマを守っていないことに気付けない
+  if (articleStatus !== "ok" && o.articleHtml !== undefined) {
+    console.warn(
+      `  [gemini] ignored articleHtml outside the response schema: item=${itemId} article=${articleStatus}`,
+    );
   }
   return {
     jaTitle: requireNonEmpty(asString(o.jaTitle, "jaTitle"), "jaTitle"),

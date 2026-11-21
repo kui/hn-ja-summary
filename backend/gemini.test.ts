@@ -88,6 +88,13 @@ describe("generateSummary", () => {
       thinkingConfig: { thinkingLevel: "MINIMAL" },
       maxOutputTokens: 8192,
     });
+    // 許可タグの一覧は ALLOWED_TAGS の並びから作るので、プロンプトの文字列が変わっていないことを固定する
+    expect(
+      requestBody.generationConfig.responseSchema.properties.hnOverviewHtml
+        .description,
+    ).toContain(
+      "見出しタグは含めない。使用可能なタグは p, ul, ol, li, strong, em, code, sup, sub, a, table, thead, tbody, tr, th, td, br のみ。開いたタグは必ず閉じる。",
+    );
     // クライアント側の 12 分より前にサーバーが打ち切るよう、余裕を引いた秒数を送る
     expect(new Headers(init?.headers).get("X-Server-Timeout")).toBe("690");
     expect(timeout).toHaveBeenCalledExactlyOnceWith(12 * 60 * 1000);
@@ -293,7 +300,8 @@ describe("generateSummary のリンクの照合", () => {
 });
 
 describe("parseSummaryResponse", () => {
-  const parse = (o: unknown) => parseSummaryResponse(JSON.stringify(o), "ok");
+  const parse = (o: unknown) =>
+    parseSummaryResponse(JSON.stringify(o), "ok", 1);
 
   it("正常なJSONを要約文書に変換する", () => {
     expect(parse(VALID_DOC)).toEqual({
@@ -309,14 +317,18 @@ describe("parseSummaryResponse", () => {
   });
 
   it("不正なJSONを拒否する", () => {
-    expect(() => parseSummaryResponse("{", "ok")).toThrow(SummaryFormatError);
+    expect(() => parseSummaryResponse("{", "ok", 1)).toThrow(
+      SummaryFormatError,
+    );
   });
 
   it("配列やnullを拒否する", () => {
-    expect(() => parseSummaryResponse("null", "ok")).toThrow(
+    expect(() => parseSummaryResponse("null", "ok", 1)).toThrow(
       SummaryFormatError,
     );
-    expect(() => parseSummaryResponse("[]", "ok")).toThrow(SummaryFormatError);
+    expect(() => parseSummaryResponse("[]", "ok", 1)).toThrow(
+      SummaryFormatError,
+    );
   });
 
   it("フィールド欠落を拒否する", () => {
@@ -332,12 +344,32 @@ describe("parseSummaryResponse", () => {
   });
 
   it("本文が無いときは articleHtml を読まず、理由だけを持たせる", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const doc = parseSummaryResponse(
       JSON.stringify({ ...VALID_DOC, articleHtml: undefined }),
       "fetch_skipped",
+      1,
     );
     expect(doc.article).toEqual({ status: "fetch_skipped" });
+    expect(warn).not.toHaveBeenCalled();
   });
+
+  it.each([123, " ", "<script>x</script>"])(
+    "本文が無いときにスキーマにない articleHtml（%j）が返ったら、検証せずに捨てて警告を出す",
+    (articleHtml) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const doc = parseSummaryResponse(
+        JSON.stringify({ ...VALID_DOC, articleHtml }),
+        "fetch_skipped",
+        1,
+      );
+      expect(doc.article).toEqual({ status: "fetch_skipped" });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain(
+        "ignored articleHtml outside the response schema: item=1 article=fetch_skipped",
+      );
+    },
+  );
 
   it("空の articleHtml は拒否する", () => {
     expect(() => parse({ ...VALID_DOC, articleHtml: " " })).toThrow(
