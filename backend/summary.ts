@@ -1,4 +1,4 @@
-import { decodeHtmlEntities, escapeHtml } from "./html.ts";
+import { decodeHtmlEntities, escapeHtml } from "@hn-feed/shared/html";
 
 export interface SummaryTopic {
   heading: string;

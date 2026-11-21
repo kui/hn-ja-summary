@@ -5,7 +5,7 @@ import {
   stripUnsourcedSummaryLinks,
   SummaryFormatError,
   validateSummaryDoc,
-} from "@hn-feed/shared/summary";
+} from "./summary";
 import type { ArticleInput } from "./article";
 
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models";

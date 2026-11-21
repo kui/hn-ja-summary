@@ -1,4 +1,4 @@
-import { SummaryFormatError } from "@hn-feed/shared/summary";
+import { SummaryFormatError } from "./summary.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GeminiRejectedError, generateSummary, MODEL } from "./gemini.ts";
 
