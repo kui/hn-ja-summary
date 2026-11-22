@@ -25,9 +25,12 @@ Node.js + npm workspaces で管理されている。ルートで `npm install` �
 
 PR のタイトルと説明文は日本語で書くこと。コミットメッセージは既存の履歴に合わせて英語のまま。
 
-## README の更新確認
+## ドキュメントの更新確認
 
-コードや設定に変更を加えた際は、README.md の内容も更新が必要でないか必ず確認すること。
+コードや設定に変更を加えた際は、README.md と `docs/` の内容も更新が必要でないか必ず確認すること。
+README.md はプロジェクトに興味を持った人が読む場所なので、開発・運用の手順や仕様は `docs/` に書く。
+
+D1 のスキーマや Queue のメッセージ形式を変えるときは、[docs/database-migrations.md](docs/database-migrations.md) に従うこと。
 
 ## GitHub Actions ワークフローのトリガー
 

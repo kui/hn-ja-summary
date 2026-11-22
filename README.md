@@ -23,9 +23,7 @@ CF Queues (hn-processor, 1 回の実行で 1 件)
         ├─ Algolia HN API: コメントツリー取得 (dead なコメントの下の返信は検索で補う)
         ├─ raw fetch → Firecrawl → Wayback: 元記事取得
         ├─ Gemini (gemini-3.5-flash-lite, Flex 推論): 日本語要約を構造化出力 (JSON) で生成
-        ├─ 検証して HTML を組み立て
-        │    └─ 失敗はその場で作り直さず、キューで遅延を倍々に延ばして再試行 (最大 6 回)
-        │       Gemini がプロンプトを安全性フィルタで止めたときなど、再試行しても通らない失敗だけはすぐ error にする
+        ├─ 検証して HTML を組み立て (失敗はキューで再試行)
         └─ D1: feed_items / processed_items 更新
 
 CF Queues (hn-processor-dlq, 再試行を使い切ったメッセージ)
@@ -51,117 +49,22 @@ migrations/  D1 共通マイグレーション
 scripts/     開発用スクリプト
 ```
 
-## 環境変数
+## 掲載条件
 
-### feed-worker / admin-worker
+直近 24 時間に投稿されたストーリーのうち、次の 3 つをすべて満たすものを要約する。
 
-バインディングのみ。シークレット不要。
+- 投稿から 2 時間以上たっている
+- コメントが 40 件以上ある
+- 投稿からの平均で毎時 20 ポイント以上獲得している
 
-### backend-worker (wrangler secret で投入)
-
-| 変数                | 説明               |
-| ------------------- | ------------------ |
-| `GEMINI_API_KEY`    | Gemini API キー    |
-| `FIRECRAWL_API_KEY` | Firecrawl API キー |
-
-### GitHub Actions（Deploy ワークフロー）
-
-| Secret                 | 説明                                                                  |
-| ---------------------- | --------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN` | D1 マイグレーションと Worker のデプロイに使う Cloudflare API トークン |
-
-## セットアップ手順
-
-秘密情報はリポジトリの中（`.env` など）に置かない。ローカルの wrangler は各自のアカウントでログインして使う。
-
-```bash
-npx wrangler login
-```
-
-### 1. git フック有効化
+## 開発
 
 ```bash
 git config core.hooksPath .githooks
-```
-
-### 2. 依存パッケージインストール
-
-```bash
 npm install
 ```
 
-### 3. Cloudflare D1 データベース作成（初回のみ）
-
-```bash
-cd feed
-npx wrangler d1 create hn-feed
-```
-
-出力された `database_id` を `feed/wrangler.toml` と `backend/wrangler.toml` の
-両方に記入する。
-
-リポジトリのルートでマイグレーションを当てる。
-
-```bash
-npm run db:migrate
-```
-
-### 4. CF Queue 作成（初回のみ）
-
-```bash
-cd backend
-npx wrangler queues create hn-processor
-npx wrangler queues create hn-processor-dlq
-```
-
-### 5. シークレット投入（backend-worker）
-
-```bash
-cd backend
-wrangler secret put GEMINI_API_KEY
-wrangler secret put FIRECRAWL_API_KEY
-```
-
-Deploy ワークフロー用の Cloudflare API トークンを GitHub Secrets に登録する。値はプロンプトに貼り付け、ファイルやコマンドライン引数には書かない。
-
-```bash
-gh secret set CLOUDFLARE_API_TOKEN
-```
-
-### 6. Cloudflare Access の設定（admin-worker）
-
-Cloudflare Zero Trust ダッシュボードで admin-worker の URL に対して Access Application を作成し、許可するメールアドレスを設定する。これにより admin-worker はアプリケーションコードに認証ロジックを持たずに保護される。
-
-### 7. デプロイ
-
-`production` ブランチへの push で GitHub Actions（`.github/workflows/deploy.yml`）が
-CI → D1 マイグレーション → 3 Worker のデプロイの順に実行する。CI が落ちたら
-マイグレーションもデプロイも走らない。
-
-マイグレーションの適用から Worker のデプロイ完了までは、古いコードが新しいスキーマの上で動く。
-そのためマイグレーションは、いま動いているコードと両立させる（追加するカラムは NULL 可かデフォルト付きにする）。
-カラムの削除やリネームは、コードがそのカラムを使わなくなってから別のデプロイで行う。
-
-push せずに再デプロイするときは、Deploy ワークフローを手動実行する。push のときと同じく CI → マイグレーション → デプロイの順に実行する。`production` 以外のブランチを指定したときは何も実行しない。
-
-```bash
-gh workflow run deploy.yml --ref production
-```
-
-デプロイが途中で失敗したときは、失敗した場所に応じて次のようにする。
-
-- `ci`：何も変わっていないので、直して push する。
-- `migrate`：Worker は古いまま。途中まで当たっている可能性があるのでログを確認し、直して push する。
-- `deploy` の一部（`deploy (feed)` などワークスペースごとのジョブ）：残りの Worker は新しい版になっている。最新の run なら「Re-run failed jobs」で失敗したジョブだけ再実行する。新しい push のデプロイが済んでいれば何もしない。
-- すべて成功したあとに不具合が見つかったとき：修正か revert を push する。スキーマは戻らない。
-
-古い run を再実行すると、その時点のコードがデプロイされるので、最新の run 以外は再実行しない。
-
-### 8. Inoreader で RSS 購読
-
-`https://hn-feed.<your-subdomain>.workers.dev/feed.xml` を Inoreader に登録。
-
-## ローカル実行
+ローカル実行:
 
 ```bash
 # feed-worker
@@ -174,25 +77,9 @@ npm -w backend run dev:scheduled
 npm -w admin run dev
 ```
 
-`wrangler tail -e production` でリアルタイムログ確認。
+## 開発・運用する人向けのドキュメント
 
-## 掲載条件
-
-直近 24 時間に投稿されたストーリーのうち、次の 3 つをすべて満たすものを要約する。
-
-- 投稿から 2 時間以上たっている
-- コメントが 40 件以上ある
-- 投稿からの平均で毎時 20 ポイント以上獲得している
-
-## 処理を諦めた項目
-
-`error` の項目は poller が再投入しない。再試行しても通らない失敗（Gemini がプロンプトを安全性フィルタで止めたときなど）か、
-キューの再試行を使い切ったもの。`error_message` には、最後に再試行に回したときのエラーが残る。
-次のコマンドで一覧を出し、原因を直したあとに管理 UI の「エンキュー」から投入し直す。
-
-```bash
-npm -w feed exec -- wrangler d1 execute hn-feed --remote --command "SELECT id, error_message FROM processed_items WHERE state = 'error' ORDER BY updated_at_ms DESC"
-```
-
-投入から 12 時間を過ぎても `enqueued` のままの項目は、メッセージが失われている。
-管理 UI の「エンキュー」から投入し直せる。
+- [初回構築](docs/setup.md)：D1・Queue・シークレット・Cloudflare Access の準備
+- [デプロイ](docs/deployment.md)：デプロイの順序、手動での再デプロイ、失敗したときの対応
+- [D1 マイグレーションと Queue メッセージの変更](docs/database-migrations.md)：新旧の版が混ざっても壊れない変更の進め方
+- [運用](docs/operations.md)：ログ、Queue の再試行と DLQ、処理を諦めた項目の調べ方
