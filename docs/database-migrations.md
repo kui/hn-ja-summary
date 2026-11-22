@@ -9,7 +9,7 @@ npm run db:migrate:local  # ローカルの D1
 
 ## 新旧のバージョンが同時に動いても壊れないようにする
 
-Worker のデプロイと D1 のマイグレーションは同時には反映できない。
+Worker のデプロイと D1 のマイグレーションを同時に反映する方法はない。
 Deploy ワークフローではマイグレーションを適用してから Worker をデプロイするので、そのあいだは古いコードが新しいスキーマの上で動く。
 3 つの Worker はそれぞれ別にデプロイされ、同じ Worker でも新旧のバージョンが一時的に同時に動く。
 
@@ -32,7 +32,8 @@ Deploy ワークフローではマイグレーションを適用してから Wor
 
 ## Queue メッセージの形式
 
-Queue（`hn-processor`）のメッセージは backend-worker の poller と admin-worker が送り、backend-worker の processor が受け取る。
+Queue（`hn-processor`）にメッセージを送るのは、backend-worker の poller と admin-worker。
+受け取るのは backend-worker の processor。
 送る側と受け取る側で新旧のバージョンが同時に動くうえ、再試行中のメッセージは古い形式のままキューに残る。
 メッセージの形式を変えるときは、古い consumer が新しいメッセージを受け取っても、新しい consumer が古いメッセージを受け取っても壊れないようにする。
 フィールドの追加と削除は、スキーマと同じく Expand / Contract に分ける。

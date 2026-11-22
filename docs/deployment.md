@@ -1,8 +1,7 @@
 # デプロイ
 
-`production` ブランチへの push で GitHub Actions（`.github/workflows/deploy.yml`）が
-CI → D1 マイグレーション → 3 Worker のデプロイの順に実行する。CI が失敗したら
-マイグレーションもデプロイも実行しない。
+`production` ブランチに push すると、GitHub Actions の Deploy ワークフロー（`.github/workflows/deploy.yml`）が動く。
+順序は CI → D1 マイグレーション → 3 Worker のデプロイで、CI が失敗したらマイグレーションとデプロイは実行しない。
 
 マイグレーションの適用から Worker のデプロイ完了までは、古いコードが新しいスキーマの上で動く。
 マイグレーションの書き方は [D1 マイグレーションと Queue メッセージの変更](database-migrations.md) に従う。

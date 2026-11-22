@@ -1,0 +1,21 @@
+# Claude が書きがちな、日本語の技術文書で一般的でない語。
+# 文脈で正しくなる語（「取得」「最新版」など）は入れない。
+version: 1
+rules:
+  - expected: バージョン
+    pattern: /(?<=新しい|古い|新旧の|同じ|別の|どの|両方の|一部の)版/
+    specs:
+      - from: 新旧の版が動く
+        to: 新旧のバージョンが動く
+      - from: 新しい版になっている
+        to: 新しいバージョンになっている
+      - from: 最新版を確認
+        to: 最新版を確認
+  - expected: バックフィル
+    pattern: 埋め戻し
+  - expected: マイグレーションを適用
+    pattern: マイグレーションを当て
+  - expected: ローカル
+    pattern: 手元
+  - expected: 指数バックオフ
+    pattern: /倍々に?/

@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "prh": {
+      "rulePaths": ["./prh.yml"]
+    },
+    "@textlint-ja/preset-ai-writing": true,
+    "preset-ja-technical-writing": {
+      "no-mix-dearu-desumasu": {
+        "preferInHeader": "",
+        "preferInBody": "である",
+        "preferInList": "である",
+        "strict": false
+      }
+    },
+    "ja-space-between-half-and-full-width": {
+      "space": "always"
+    }
+  }
+}
