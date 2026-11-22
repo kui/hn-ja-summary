@@ -64,7 +64,7 @@ git config core.hooksPath .githooks
 npm install
 ```
 
-ローカル実行:
+ローカルでの実行方法は次のとおり。
 
 ```bash
 # feed-worker

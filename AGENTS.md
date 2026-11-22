@@ -16,9 +16,8 @@ Node.js + npm workspaces で管理されている。ルートで `npm install` �
 
 ## 依存ソフトウェアのバージョン選定
 
-新しく導入する GitHub Actions・npm パッケージ・mise ツールなどのバージョンを指定する際は、
-記憶や推測で書かず必ず最新版を確認すること（例: `gh api repos/<owner>/<repo>/releases/latest`、
-`npm view <pkg> version`）。意図的に古いバージョンを使う場合のみ、その理由をコミットメッセージか
+新しく導入する GitHub Actions・npm パッケージ・mise ツールなどのバージョンは、記憶や推測で書かないこと。
+必ず最新版を確認する（例: `gh api repos/<owner>/<repo>/releases/latest`、`npm view <pkg> version`）。意図的に古いバージョンを使う場合のみ、その理由をコミットメッセージか
 コメントで明示すること。
 
 ## PR の言語
@@ -43,9 +42,9 @@ D1 のスキーマや Queue のメッセージ形式を変えるときは、[doc
 秘密情報をリポジトリの中（`.env` など）に置かないこと。wrangler の認証は各自の `wrangler login` を使う。
 `~/.wrangler` など認証情報の保存場所を読んだり、トークンを表示するコマンドを実行したりしないこと。
 
-Gemini や Firecrawl を実際に呼んで挙動を確かめるスクリプトは、API キーをリポジトリの外のファイル
-（`~/.config/hn-ja-summary/gemini-api-key`、`~/.config/hn-ja-summary/firecrawl-api-key`）から読むこと。
-キーは画面にもログにも出さず、ファイルがなければ置き場所を示して止まること。ファイルはユーザーが確認するあいだだけ置く。
+Gemini や Firecrawl を実際に呼んで挙動を確かめるスクリプトは、API キーをリポジトリの外のファイルから読むこと。
+置き場所は `~/.config/hn-ja-summary/gemini-api-key` と `~/.config/hn-ja-summary/firecrawl-api-key`。
+キーは画面とログに出さず、ファイルがなければ置き場所を示して止まること。ファイルはユーザーが確認するあいだだけ置く。
 エージェントはこのファイルを作ったり、中身を表示したりしないこと。
 
 ## Git worktree の起点
@@ -72,4 +71,5 @@ npm run checkAll && npm test
 
 ## スキル実行後の自己改善
 
-`.claude/commands/` 配下のスキル（slash command）を実行した際は、完了時に必ずそのスキルプロンプトを振り返り、実行中に発見した問題点・不足・改善点があればプロンプトファイルを修正すること。
+`.claude/commands/` 配下のスキル（slash command）を実行した際は、完了時に必ずそのスキルプロンプトを振り返ること。
+実行中に発見した問題点・不足・改善点があれば、プロンプトファイルを修正する。
