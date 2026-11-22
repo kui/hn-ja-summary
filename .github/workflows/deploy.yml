@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [production]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +15,8 @@ concurrency:
 
 jobs:
   ci:
+    # 手動実行で production 以外のブランチを選んでも、本番にデプロイさせない
+    if: github.ref == 'refs/heads/production'
     uses: ./.github/workflows/ci.yml
 
   # 新しいコードが追加カラムを参照する前に、スキーマを先に進める

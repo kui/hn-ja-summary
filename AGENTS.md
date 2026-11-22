@@ -32,7 +32,13 @@ PR のタイトルと説明文は日本語で書くこと。コミットメッ�
 ## GitHub Actions ワークフローのトリガー
 
 ワークフローを動かすためだけの空コミット（`git commit --allow-empty`）は行わないこと。
-再デプロイが必要な場合は `wrangler deploy` コマンドで直接実行すること。
+再デプロイが必要な場合は `gh workflow run deploy.yml --ref production` で Deploy ワークフローを手動実行すること。
+`wrangler deploy` をローカルから実行しない（デプロイ用のトークンは GitHub Secrets にだけ置いている）。
+
+## 秘密情報の扱い
+
+秘密情報をリポジトリの中（`.env` など）に置かないこと。wrangler の認証は各自の `wrangler login` を使う。
+`~/.wrangler` など認証情報の保存場所を読んだり、トークンを表示するコマンドを実行したりしないこと。
 
 ## Git worktree の起点
 
