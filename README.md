@@ -48,7 +48,7 @@ backend/     scheduled (poller) + queue (processor) を担う Worker
 feed/        RSS 配信・要約 HTML ページ配信 Worker
 admin/       手動キュー投入 UI Worker（Cloudflare Access で保護）
 migrations/  D1 共通マイグレーション
-scripts/     GitHub Secrets 同期スクリプト
+scripts/     開発用スクリプト
 ```
 
 ## 環境変数
@@ -64,19 +64,18 @@ scripts/     GitHub Secrets 同期スクリプト
 | `GEMINI_API_KEY`    | Gemini API キー    |
 | `FIRECRAWL_API_KEY` | Firecrawl API キー |
 
+### GitHub Actions（Deploy ワークフロー）
+
+| Secret                 | 説明                                                                  |
+| ---------------------- | --------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN` | D1 マイグレーションと Worker のデプロイに使う Cloudflare API トークン |
+
 ## セットアップ手順
 
-`.env.example` をコピーして値を埋める。
+秘密情報はリポジトリの中（`.env` など）に置かない。ローカルの wrangler は各自のアカウントでログインして使う。
 
 ```bash
-cp .env.example .env
-# .env を編集して各値を記入
-```
-
-GitHub Secrets への反映:
-
-```bash
-bash scripts/sync-github-env.sh
+npx wrangler login
 ```
 
 ### 1. git フック有効化
@@ -99,7 +98,7 @@ npx wrangler d1 create hn-feed
 ```
 
 出力された `database_id` を `feed/wrangler.toml` と `backend/wrangler.toml` の
-両方に記入し、`CLOUDFLARE_D1_DATABASE_ID` を env に設定する。
+両方に記入する。
 
 リポジトリのルートでマイグレーションを当てる。
 
@@ -123,6 +122,12 @@ wrangler secret put GEMINI_API_KEY
 wrangler secret put FIRECRAWL_API_KEY
 ```
 
+Deploy ワークフロー用の Cloudflare API トークンを GitHub Secrets に登録する。値はプロンプトに貼り付け、ファイルやコマンドライン引数には書かない。
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN
+```
+
 ### 6. Cloudflare Access の設定（admin-worker）
 
 Cloudflare Zero Trust ダッシュボードで admin-worker の URL に対して Access Application を作成し、許可するメールアドレスを設定する。これにより admin-worker はアプリケーションコードに認証ロジックを持たずに保護される。
@@ -137,13 +142,10 @@ CI → D1 マイグレーション → 3 Worker のデプロイの順に実行�
 そのためマイグレーションは、いま動いているコードと両立させる（追加するカラムは NULL 可かデフォルト付きにする）。
 カラムの削除やリネームは、コードがそのカラムを使わなくなってから別のデプロイで行う。
 
-手動でデプロイするときも、マイグレーションを先に当ててから Worker をデプロイする。
+push せずに再デプロイするときは、Deploy ワークフローを手動実行する。push のときと同じく CI → マイグレーション → デプロイの順に実行する。`production` 以外のブランチを指定したときは何も実行しない。
 
 ```bash
-npm run db:migrate
-npm -w feed run deploy
-npm -w backend run deploy
-npm -w admin run deploy
+gh workflow run deploy.yml --ref production
 ```
 
 デプロイが途中で失敗したときは、失敗した場所に応じて次のようにする。
