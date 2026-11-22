@@ -40,6 +40,11 @@ PR のタイトルと説明文は日本語で書くこと。コミットメッ�
 秘密情報をリポジトリの中（`.env` など）に置かないこと。wrangler の認証は各自の `wrangler login` を使う。
 `~/.wrangler` など認証情報の保存場所を読んだり、トークンを表示するコマンドを実行したりしないこと。
 
+Gemini や Firecrawl を実際に呼んで挙動を確かめるスクリプトは、API キーをリポジトリの外のファイル
+（`~/.config/hn-ja-summary/gemini-api-key`、`~/.config/hn-ja-summary/firecrawl-api-key`）から読むこと。
+キーは画面にもログにも出さず、ファイルがなければ置き場所を示して止まること。ファイルはユーザーが確認するあいだだけ置く。
+エージェントはこのファイルを作ったり、中身を表示したりしないこと。
+
 ## Git worktree の起点
 
 worktree は `origin/production` の最新を起点に作ること。
