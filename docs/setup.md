@@ -37,7 +37,7 @@ npx wrangler d1 create hn-feed
 出力された `database_id` を `feed/wrangler.toml` と `backend/wrangler.toml` の
 両方に記入する。
 
-リポジトリのルートでマイグレーションを当てる。
+リポジトリのルートでマイグレーションを適用する。
 
 ```bash
 npm run db:migrate

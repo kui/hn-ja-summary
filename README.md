@@ -81,5 +81,5 @@ npm -w admin run dev
 
 - [初回構築](docs/setup.md)：D1・Queue・シークレット・Cloudflare Access の準備
 - [デプロイ](docs/deployment.md)：デプロイの順序、手動での再デプロイ、失敗したときの対応
-- [D1 マイグレーションと Queue メッセージの変更](docs/database-migrations.md)：新旧の版が混ざっても壊れない変更の進め方
-- [運用](docs/operations.md)：ログ、Queue の再試行と DLQ、処理を諦めた項目の調べ方
+- [D1 マイグレーションと Queue メッセージの変更](docs/database-migrations.md)：新旧のバージョンが同時に動いても壊れない変更の進め方
+- [運用](docs/operations.md)：ログ、Queue の再試行と DLQ、error になった項目の調べ方

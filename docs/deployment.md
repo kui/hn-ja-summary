@@ -21,7 +21,7 @@ gh workflow run deploy.yml --ref production
 
 - `ci`：何も変わっていないので、直して push する。
 - `migrate`：Worker は古いまま。途中まで当たっている可能性があるのでログを確認し、直して push する。
-- `deploy` の一部（`deploy (feed)` などワークスペースごとのジョブ）：残りの Worker は新しい版になっている。最新の run なら「Re-run failed jobs」で失敗したジョブだけ再実行する。新しい push のデプロイが済んでいれば何もしない。
+- `deploy` の一部（`deploy (feed)` などワークスペースごとのジョブ）：残りの Worker は新しいバージョンになっている。最新の run なら「Re-run failed jobs」で失敗したジョブだけ再実行する。新しい push のデプロイが済んでいれば何もしない。
 - すべて成功したあとに不具合が見つかったとき：修正か revert を push する。スキーマは戻らない。
 
 古い run を再実行すると、その時点のコードがデプロイされるので、最新の run 以外は再実行しない。
