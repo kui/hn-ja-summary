@@ -1,6 +1,12 @@
 import { escapeHtml } from "@hn-feed/shared/html";
 import { Temporal } from "temporal-polyfill";
 import { setEnqueued, type ItemState } from "@hn-feed/shared/state";
+import {
+  parseListQuery,
+  parseState,
+  renderTaskList,
+  type ListQuery,
+} from "./task-list.ts";
 
 const PAGE_STYLE = `
 :root{color-scheme:light dark;--text:#222;--bg:#fafafa;--input-border:#767676;--ok-bg:#e8f5e9;--ok-border:#a5d6a7;--warn-bg:#fff8e1;--warn-border:#ffe082;--error-bg:#ffebee;--error-border:#ef9a9a}
@@ -13,6 +19,18 @@ button{margin-top:8px;padding:8px 20px;font:inherit;cursor:pointer}
 .result.ok{background:var(--ok-bg);border:1px solid var(--ok-border)}
 .result.warn{background:var(--warn-bg);border:1px solid var(--warn-border)}
 .result.error{background:var(--error-bg);border:1px solid var(--error-border)}
+h2{font-size:1.2em;margin:1.5em 0 .5em}
+.filter a[aria-current]{font-weight:bold;text-decoration:none}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9em}
+th,td{padding:4px 6px;border-bottom:1px solid var(--input-border);text-align:left;vertical-align:top}
+td.nowrap{white-space:nowrap}
+td.reason{overflow-wrap:anywhere}
+td.state-error{color:var(--error-border)}
+td form{margin:0}
+td button{margin:0;padding:2px 10px;white-space:nowrap}
+.pager{display:flex;justify-content:space-between;margin:1em 0}
+.pager a[rel=next]{margin-left:auto}
 `;
 
 const PAGE_HEADERS = {
@@ -84,7 +102,17 @@ function renderIndexPage(): Response {
   );
 }
 
-function renderEnqueuePage(resultHtml: string, defaultValue = ""): Response {
+async function renderEnqueuePage(
+  env: Env,
+  query: ListQuery,
+  resultHtml: string,
+  defaultValue = "",
+): Promise<Response> {
+  const stateInput =
+    query.state !== null
+      ? `<input type="hidden" name="state" value="${escapeHtml(query.state)}">`
+      : "";
+  const taskList = await renderTaskList(env.DB, query);
   return new Response(
     `<!DOCTYPE html>
 <html lang="ja">
@@ -105,8 +133,10 @@ function renderEnqueuePage(resultHtml: string, defaultValue = ""): Response {
       <input type="text" id="hn-id" name="id" placeholder="43012345 または https://news.ycombinator.com/item?id=43012345"
         value="${escapeHtml(defaultValue)}" required autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" autofocus>
     </p>
+    ${stateInput}
     <button type="submit">キューに追加</button>
   </form>
+  ${taskList}
 </body>
 </html>`,
     { headers: PAGE_HEADERS },
@@ -116,14 +146,23 @@ function renderEnqueuePage(resultHtml: string, defaultValue = ""): Response {
 async function handleEnqueue(request: Request, env: Env): Promise<Response> {
   const formData = await request.formData();
   const input = formData.get("id") ?? "";
+  // 一覧の「投入し直す」ボタンから送ったときは、絞り込みを保ったまま結果を出す
+  const query: ListQuery = {
+    state: parseState(formData.get("state")),
+    page: { kind: "first" },
+  };
   if (typeof input !== "string") {
     return renderEnqueuePage(
+      env,
+      query,
       `<div class="result error">ID を入力してください。</div>`,
     );
   }
 
   if (!input.trim()) {
     return renderEnqueuePage(
+      env,
+      query,
       `<div class="result error">ID を入力してください。</div>`,
     );
   }
@@ -131,6 +170,8 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
   const itemId = parseItemId(input);
   if (itemId === null) {
     return renderEnqueuePage(
+      env,
+      query,
       `<div class="result error">&ldquo;${escapeHtml(input)}&rdquo; は有効な HN item ID または URL ではありません。</div>`,
       input,
     );
@@ -146,6 +187,8 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
 
   if (prevState === "enqueued" && !isStale(existing?.enqueued_at_ms ?? null)) {
     return renderEnqueuePage(
+      env,
+      query,
       `<div class="result warn">ID ${itemId} は既にキュー待ち（enqueued）です。</div>`,
     );
   }
@@ -159,6 +202,8 @@ async function handleEnqueue(request: Request, env: Env): Promise<Response> {
   const action = isReprocess ? "再処理" : "処理";
   const prevNote = prevState ? ` (前の状態: ${prevState})` : "";
   return renderEnqueuePage(
+    env,
+    query,
     `<div class="result ok">ID ${itemId} の${action}をキューに追加しました${prevNote}。</div>`,
   );
 }
@@ -171,7 +216,12 @@ export default {
       return renderIndexPage();
 
     if (request.method === "GET" && url.pathname === "/enqueue")
-      return renderEnqueuePage("", url.searchParams.get("id") ?? "");
+      return renderEnqueuePage(
+        env,
+        parseListQuery(url.searchParams),
+        "",
+        url.searchParams.get("id") ?? "",
+      );
 
     if (request.method === "POST" && url.pathname === "/enqueue") {
       // Access の cookie だけでは送信元を保証できないので、Origin を確かめる。

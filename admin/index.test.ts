@@ -12,6 +12,7 @@ import { Temporal } from "temporal-polyfill";
 import { applyD1Migrations, env, type D1Migration } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
 import admin from "./index.ts";
+import { PAGE_SIZE } from "./task-list.ts";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -52,7 +53,8 @@ async function parseForm(
   let value: string | null = null;
   let injected = 0;
   await new HTMLRewriter()
-    .on('input[name="id"]', {
+    // 一覧の「投入し直す」ボタンのフォームにも name="id" があるので、入力欄は id で選ぶ
+    .on("#hn-id", {
       element(el) {
         value = decodeEntities(el.getAttribute("value") ?? "");
       },
@@ -79,6 +81,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM processed_items").run();
+  await env.DB.prepare("DELETE FROM feed_items").run();
 });
 
 afterEach(() => {
@@ -304,5 +307,192 @@ describe("POST /enqueue", () => {
 
     expect(res.status).toBe(403);
     expect(await storedState(123)).toBeNull();
+  });
+});
+
+async function insertRow(
+  id: number,
+  state: string,
+  updatedAtMs: number,
+  errorMessage: string | null = null,
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, error_message)
+     VALUES (?, ?, 1, ?, ?)`,
+  )
+    .bind(id, state, updatedAtMs, errorMessage)
+    .run();
+}
+
+interface ListedPage {
+  ids: number[];
+  retryIds: number[];
+  older: string | null;
+  newer: string | null;
+  injected: number;
+}
+
+// 一覧の表の ID 列、「投入し直す」ボタンのある行、「前へ」「次へ」のリンクを集める
+async function parseList(res: Response): Promise<ListedPage> {
+  const page: ListedPage = {
+    ids: [],
+    retryIds: [],
+    older: null,
+    newer: null,
+    injected: 0,
+  };
+  let idText = "";
+  await new HTMLRewriter()
+    .on("tbody tr td:first-child a", {
+      text(t) {
+        idText += t.text;
+        if (t.lastInTextNode) {
+          page.ids.push(Number(idText));
+          idText = "";
+        }
+      },
+    })
+    .on('tbody form input[name="id"]', {
+      element(el) {
+        page.retryIds.push(Number(el.getAttribute("value")));
+      },
+    })
+    .on(".pager a", {
+      element(el) {
+        const href = decodeEntities(el.getAttribute("href") ?? "");
+        if (el.getAttribute("rel") === "next") page.older = href;
+        if (el.getAttribute("rel") === "prev") page.newer = href;
+      },
+    })
+    .on("script, [onfocus]", {
+      element() {
+        page.injected++;
+      },
+    })
+    .transform(res)
+    .text();
+  return page;
+}
+
+async function getList(path: string): Promise<ListedPage> {
+  return parseList(await exports.default.fetch(`${ORIGIN}${path}`));
+}
+
+describe("タスク一覧", () => {
+  it("更新の新しい順にページに分け、次へと前へで行き来できる", async () => {
+    // 同じ更新時刻の行も ID で順序が決まり、ページの境目で抜けも重複もしない
+    const total = PAGE_SIZE * 2 + 5;
+    for (let id = 1; id <= total; id++)
+      await insertRow(id, "completed", Math.ceil(id / 3));
+    const expected = Array.from({ length: total }, (_, i) => total - i);
+
+    const first = await getList("/enqueue");
+    expect(first.ids).toEqual(expected.slice(0, PAGE_SIZE));
+    expect(first.newer).toBeNull();
+
+    const second = await getList(first.older!);
+    expect(second.ids).toEqual(expected.slice(PAGE_SIZE, PAGE_SIZE * 2));
+
+    const third = await getList(second.older!);
+    expect(third.ids).toEqual(expected.slice(PAGE_SIZE * 2));
+    expect(third.older).toBeNull();
+
+    const back = await getList(third.newer!);
+    expect(back.ids).toEqual(second.ids);
+    const backToFirst = await getList(back.newer!);
+    expect(backToFirst.ids).toEqual(first.ids);
+    expect(backToFirst.newer).toBeNull();
+  });
+
+  it("状態で絞り込む", async () => {
+    for (let id = 1; id <= PAGE_SIZE + 2; id++)
+      await insertRow(id, id % 2 === 0 ? "error" : "completed", id);
+    const errorIds = Array.from(
+      { length: PAGE_SIZE + 2 },
+      (_, i) => PAGE_SIZE + 2 - i,
+    ).filter((id) => id % 2 === 0);
+
+    const first = await getList("/enqueue?state=error");
+    expect(first.ids).toEqual(errorIds);
+    expect(first.older).toBeNull();
+  });
+
+  it("絞り込んだまま次のページに進む", async () => {
+    for (let id = 1; id <= PAGE_SIZE * 3; id++)
+      await insertRow(id, id % 2 === 0 ? "error" : "completed", id);
+
+    const first = await getList("/enqueue?state=error");
+    const second = await getList(first.older!);
+
+    expect(first.older).toContain("state=error");
+    expect([...first.ids, ...second.ids]).toEqual(
+      Array.from({ length: PAGE_SIZE * 3 }, (_, i) => PAGE_SIZE * 3 - i).filter(
+        (id) => id % 2 === 0,
+      ),
+    );
+  });
+
+  it.each([
+    ["存在しない状態", "/enqueue?state=unknown"],
+    ["形式の違うカーソル", "/enqueue?older=abc"],
+  ])("%s は無視して最初のページを出す", async (_, path) => {
+    await insertRow(1, "completed", 1);
+    await insertRow(2, "error", 2);
+
+    expect((await getList(path)).ids).toEqual([2, 1]);
+  });
+
+  it("error の行にだけ「投入し直す」ボタンを出す", async () => {
+    await insertRow(1, "completed", 1);
+    await insertRow(2, "error", 2);
+    await insertRow(3, "skipped", 3);
+    await insertRow(4, "enqueued", 4);
+
+    expect((await getList("/enqueue")).retryIds).toEqual([2]);
+  });
+
+  it("completed の行には記事のタイトルを出す", async () => {
+    await insertRow(1, "completed", 1);
+    await env.DB.prepare(
+      `INSERT INTO feed_items (id, created_at_ms, title, article_url, hn_url, summary_html, model)
+       VALUES (1, 1, 'Show HN: タイトル', 'https://example.com', 'https://news.ycombinator.com/item?id=1', '', 'm')`,
+    ).run();
+
+    const res = await exports.default.fetch(`${ORIGIN}/enqueue`);
+
+    expect(await res.text()).toContain("Show HN: タイトル");
+  });
+
+  it("エラーの理由とタイトルをエスケープする", async () => {
+    await insertRow(1, "error", 1, ATTACK);
+    await env.DB.prepare(
+      `INSERT INTO feed_items (id, created_at_ms, title, article_url, hn_url, summary_html, model)
+       VALUES (1, 1, ?, 'https://example.com', 'https://news.ycombinator.com/item?id=1', '', 'm')`,
+    )
+      .bind(ATTACK)
+      .run();
+
+    const page = await getList("/enqueue");
+
+    expect(page.ids).toEqual([1]);
+    expect(page.injected).toBe(0);
+  });
+
+  it("「投入し直す」ボタンで送ると、絞り込みを保った一覧を返す", async () => {
+    await insertRow(1, "error", 1);
+    await insertRow(2, "completed", 2);
+    const body = new FormData();
+    body.set("id", "1");
+    body.set("state", "error");
+
+    const res = await exports.default.fetch(`${ORIGIN}/enqueue`, {
+      method: "POST",
+      body,
+      headers: { Origin: ORIGIN },
+    });
+
+    expect(await storedState(1)).toBe("enqueued");
+    // 投入し直した行は enqueued になったので、error の一覧からは消える
+    expect((await parseList(res)).ids).toEqual([]);
   });
 });

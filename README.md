@@ -34,7 +34,7 @@ feed-worker (fetch handler)
   └─ GET /items/{id} → 要約 HTML ページ
 
 admin-worker (fetch handler, Cloudflare Access で保護)
-  └─ GET, POST /enqueue → 投稿を手動でキューに追加
+  └─ GET, POST /enqueue → 投稿を手動でキューに追加、処理した項目の一覧
 ```
 
 ## ディレクトリ構成
