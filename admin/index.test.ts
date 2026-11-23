@@ -53,7 +53,7 @@ async function parseForm(
   let value: string | null = null;
   let injected = 0;
   await new HTMLRewriter()
-    // 一覧の「投入し直す」ボタンのフォームにも name="id" があるので、入力欄は id で選ぶ
+    // 一覧の「再投入」ボタンのフォームにも name="id" があるので、入力欄は id で選ぶ
     .on("#hn-id", {
       element(el) {
         value = decodeEntities(el.getAttribute("value") ?? "");
@@ -332,7 +332,7 @@ interface ListedPage {
   injected: number;
 }
 
-// 一覧の表の ID 列、「投入し直す」ボタンのある行、「前へ」「次へ」のリンクを集める
+// 一覧の表の ID 列、「再投入」ボタンのある行、「前へ」「次へ」のリンクを集める
 async function parseList(res: Response): Promise<ListedPage> {
   const page: ListedPage = {
     ids: [],
@@ -399,9 +399,11 @@ describe("タスク一覧", () => {
 
     const back = await getList(third.newer!);
     expect(back.ids).toEqual(second.ids);
+    expect(back.older).toBe(second.older);
     const backToFirst = await getList(back.newer!);
     expect(backToFirst.ids).toEqual(first.ids);
     expect(backToFirst.newer).toBeNull();
+    expect(backToFirst.older).toBe(first.older);
   });
 
   it("状態で絞り込む", async () => {
@@ -435,6 +437,12 @@ describe("タスク一覧", () => {
   it.each([
     ["存在しない状態", "/enqueue?state=unknown"],
     ["形式の違うカーソル", "/enqueue?older=abc"],
+    ["前に文字があるカーソル", "/enqueue?older=x2_2"],
+    ["後ろに文字があるカーソル", "/enqueue?older=2_2x"],
+    [
+      "ID が安全に扱える範囲を超えるカーソル",
+      "/enqueue?older=1_99999999999999999999",
+    ],
   ])("%s は無視して最初のページを出す", async (_, path) => {
     await insertRow(1, "completed", 1);
     await insertRow(2, "error", 2);
@@ -442,7 +450,7 @@ describe("タスク一覧", () => {
     expect((await getList(path)).ids).toEqual([2, 1]);
   });
 
-  it("error の行にだけ「投入し直す」ボタンを出す", async () => {
+  it("error の行にだけ「再投入」ボタンを出す", async () => {
     await insertRow(1, "completed", 1);
     await insertRow(2, "error", 2);
     await insertRow(3, "skipped", 3);
@@ -478,7 +486,7 @@ describe("タスク一覧", () => {
     expect(page.injected).toBe(0);
   });
 
-  it("「投入し直す」ボタンで送ると、絞り込みを保った一覧を返す", async () => {
+  it("「再投入」ボタンで送ると、絞り込みを保った一覧を返す", async () => {
     await insertRow(1, "error", 1);
     await insertRow(2, "completed", 2);
     const body = new FormData();
@@ -509,7 +517,7 @@ describe("タスク一覧", () => {
       .transform(await exports.default.fetch(`${ORIGIN}/enqueue?state=error`))
       .text();
 
-    // 入力欄のフォームと、「投入し直す」ボタンのフォーム
+    // 入力欄のフォームと、「再投入」ボタンのフォーム
     expect(states).toEqual(["error", "error"]);
   });
 
@@ -522,6 +530,73 @@ describe("タスク一覧", () => {
     expect(page.ids).toEqual([]);
     expect(page.newer).toBe("/enqueue?state=error");
     expect(page.older).toBeNull();
+  });
+
+  it.each([
+    ["絞り込みなし", "/enqueue", "すべて"],
+    ["error で絞り込み", "/enqueue?state=error", "error"],
+  ])(
+    "%s のとき、状態ごとのリンクを並べ、今の状態に印を付ける",
+    async (_, path, current) => {
+      const links: { href: string | null; current: boolean; label: string }[] =
+        [];
+      await new HTMLRewriter()
+        .on(".filter a", {
+          element(el) {
+            links.push({
+              href: el.getAttribute("href"),
+              current: el.hasAttribute("aria-current"),
+              label: "",
+            });
+          },
+          text(t) {
+            links.at(-1)!.label += t.text;
+          },
+        })
+        .transform(await exports.default.fetch(`${ORIGIN}${path}`))
+        .text();
+
+      expect(links.map((l) => [l.label, l.href])).toEqual([
+        ["すべて", "/enqueue"],
+        ["enqueued", "/enqueue?state=enqueued"],
+        ["completed", "/enqueue?state=completed"],
+        ["error", "/enqueue?state=error"],
+        ["skipped", "/enqueue?state=skipped"],
+      ]);
+      expect(links.filter((l) => l.current).map((l) => l.label)).toEqual([
+        current,
+      ]);
+    },
+  );
+
+  it("ID を HN へのリンクにし、スキップの理由を出す", async () => {
+    await env.DB.prepare(
+      `INSERT INTO processed_items (id, state, created_at_ms, updated_at_ms, skip_reason)
+       VALUES (7, 'skipped', 1, 1, 'item deleted')`,
+    ).run();
+    let href: string | null = null;
+
+    const res = await exports.default.fetch(`${ORIGIN}/enqueue`);
+    const html = await new HTMLRewriter()
+      .on("tbody td:first-child a", {
+        element(el) {
+          href = el.getAttribute("href");
+        },
+      })
+      .transform(res)
+      .text();
+
+    expect(href).toBe("https://news.ycombinator.com/item?id=7");
+    expect(html).toContain("item deleted");
+  });
+
+  it("行がないときは、その旨を出してページのリンクを出さない", async () => {
+    const res = await exports.default.fetch(`${ORIGIN}/enqueue`);
+    const html = await res.clone().text();
+
+    expect(html).toContain("該当するタスクはありません");
+    const page = await parseList(res);
+    expect([page.newer, page.older]).toEqual([null, null]);
   });
 
   it("更新日時を JST で分まで表示する", async () => {

@@ -134,7 +134,7 @@ function renderRow(row: TaskRow, state: ItemState | null): string {
       : "";
   const action =
     row.state === "error"
-      ? `<form method="POST" action="/enqueue"><input type="hidden" name="id" value="${row.id}">${stateInput}<button type="submit">投入し直す</button></form>`
+      ? `<form method="POST" action="/enqueue"><input type="hidden" name="id" value="${row.id}">${stateInput}<button type="submit">再投入</button></form>`
       : "";
   return `<tr>
       <td><a href="${escapeHtml(hnUrl)}">${row.id}</a></td>

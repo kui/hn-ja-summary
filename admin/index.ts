@@ -146,7 +146,7 @@ async function renderEnqueuePage(
 async function handleEnqueue(request: Request, env: Env): Promise<Response> {
   const formData = await request.formData();
   const input = formData.get("id") ?? "";
-  // 一覧の「投入し直す」ボタンから送ったときは、絞り込みを保ったまま結果を出す
+  // 一覧の「再投入」ボタンから送ったときは、絞り込みを保ったまま結果を出す
   const query: ListQuery = {
     state: parseState(formData.get("state")),
     page: { kind: "first" },
