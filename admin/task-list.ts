@@ -93,7 +93,8 @@ async function queryTasks(
   if (page.kind === "newer") rows.reverse();
   return {
     rows,
-    // 起点の行がある側には、少なくともその行が残っている
+    // 起点の行より向こう側にも行があるとみなす。絞り込み中に行の状態が変わって外れると
+    // 実際には 0 件のこともあるので、空のページには最初のページへのリンクを出す
     hasOlder: page.kind === "newer" ? true : hasMore,
     hasNewer:
       page.kind === "first" ? false : page.kind === "newer" ? hasMore : true,
@@ -153,6 +154,9 @@ export async function renderTaskList(
   const first = rows[0];
   const last = rows.at(-1);
   const pager = [
+    rows.length === 0 && query.page.kind !== "first"
+      ? `<a href="${escapeHtml(listUrl(query.state))}" rel="prev">← 最初のページへ</a>`
+      : "",
     hasNewer && first
       ? `<a href="${escapeHtml(listUrl(query.state, { newer: formatCursor(first) }))}" rel="prev">← 前へ</a>`
       : "",

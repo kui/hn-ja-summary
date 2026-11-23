@@ -495,4 +495,44 @@ describe("タスク一覧", () => {
     // 投入し直した行は enqueued になったので、error の一覧からは消える
     expect((await parseList(res)).ids).toEqual([]);
   });
+
+  it("絞り込んだ一覧のフォームは、絞り込みも送る", async () => {
+    await insertRow(1, "error", 1);
+    const states: (string | null)[] = [];
+
+    await new HTMLRewriter()
+      .on('form input[name="state"]', {
+        element(el) {
+          states.push(el.getAttribute("value"));
+        },
+      })
+      .transform(await exports.default.fetch(`${ORIGIN}/enqueue?state=error`))
+      .text();
+
+    // 入力欄のフォームと、「投入し直す」ボタンのフォーム
+    expect(states).toEqual(["error", "error"]);
+  });
+
+  // 絞り込み中に行の状態が変わると、起点の向こう側に行が残っていないことがある
+  it("行のないページには最初のページへのリンクを出す", async () => {
+    await insertRow(1, "error", 1);
+
+    const page = await getList("/enqueue?state=error&newer=5_1");
+
+    expect(page.ids).toEqual([]);
+    expect(page.newer).toBe("/enqueue?state=error");
+    expect(page.older).toBeNull();
+  });
+
+  it("更新日時を JST で分まで表示する", async () => {
+    await insertRow(
+      1,
+      "completed",
+      Temporal.Instant.from("2026-01-01T15:00:30Z").epochMilliseconds,
+    );
+
+    const res = await exports.default.fetch(`${ORIGIN}/enqueue`);
+
+    expect(await res.text()).toContain("2026-01-02 00:00<");
+  });
 });
