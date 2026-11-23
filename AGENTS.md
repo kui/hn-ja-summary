@@ -47,9 +47,13 @@ Gemini や Firecrawl を実際に呼んで挙動を確かめるスクリプト�
 キーは画面とログに出さず、ファイルがなければ置き場所を示して止まること。ファイルはユーザーが確認するあいだだけ置く。
 エージェントはこのファイルを作ったり、中身を表示したりしないこと。
 
-## Git worktree の起点
+## 作業ブランチと worktree
 
-worktree は `origin/production` の最新を起点に作ること。
+新しい作業のブランチは `origin/production` の最新から作ること。
+
+- 本体のチェックアウトに未コミットの変更がなく、ほかの作業も進んでいなければ、本体で `origin/production` からブランチを作る。
+- worktree を作るのは、本体で別の作業が進んでいるときだけにする。作るときもアプリの worktree 機能（`EnterWorktree`）を使う。`git worktree add` で作るとアプリがその変更を知らず、差分のペインに出ない。
+- worktree も `origin/production` の最新を起点にする。
 
 ## eslint-disable コメント
 
