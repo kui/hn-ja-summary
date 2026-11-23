@@ -47,10 +47,6 @@ Gemini や Firecrawl を実際に呼んで挙動を確かめるスクリプト�
 キーは画面とログに出さず、ファイルがなければ置き場所を示して止まること。ファイルはユーザーが確認するあいだだけ置く。
 エージェントはこのファイルを作ったり、中身を表示したりしないこと。
 
-## Git worktree の起点
-
-worktree は `origin/production` の最新を起点に作ること。
-
 ## eslint-disable コメント
 
 `eslint-disable` / `eslint-disable-next-line` を使う際は、必ず直前の行に **なぜ無効化するのか** を説明するコメントを書くこと。
