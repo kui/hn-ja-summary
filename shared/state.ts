@@ -4,7 +4,13 @@ import { Temporal } from "temporal-polyfill";
 // completed: processor が D1 への書き込みまで成功
 // error: 再試行しても通らない失敗か、Queue の再配信を使い切った。poller は再エンキューせず、admin から手動で投入し直す
 // skipped: processor が意図的にスキップ（HN アイテム消滅など）
-export type ItemState = "enqueued" | "completed" | "error" | "skipped";
+export const ITEM_STATES = [
+  "enqueued",
+  "completed",
+  "error",
+  "skipped",
+] as const;
+export type ItemState = (typeof ITEM_STATES)[number];
 
 export async function batchGetStates(
   db: D1Database,
